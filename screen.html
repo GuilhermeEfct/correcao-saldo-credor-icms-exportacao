@@ -1,0 +1,187 @@
+<!-- screen.html — bloco de tela (SEM <html>/<head>/<body>).
+     Todo o conteúdo vive dentro de #tool-correcao-saldo-credor-icms. O HUB injeta
+     este div na sua página interna; CSS e JS ficam escopados sob este id. -->
+<div id="tool-correcao-saldo-credor-icms">
+
+  <header class="cscie-header">
+    <div class="cscie-header-brand">
+      <!-- ícone Lucide (trending-up) em SVG -->
+      <svg class="cscie-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+      </svg>
+      <div>
+        <h1 class="cscie-title">Correção do Saldo Credor de ICMS proporcional às Exportações</h1>
+        <p class="cscie-subtitle">Último mês de apuração · saldo credor × proporção das exportações</p>
+      </div>
+    </div>
+    <button id="cscieBtnLimpar" type="button" class="cscie-btn cscie-btn-limpar">
+      Limpar tudo
+    </button>
+  </header>
+
+  <main class="cscie-main">
+
+    <!-- Passo 1: empresa -->
+    <section class="cscie-card">
+      <span class="cscie-step">1</span>
+      <h2 class="cscie-card-title">Empresa</h2>
+      <div class="cscie-field-row">
+        <div class="cscie-field cscie-field-sm">
+          <label for="cscieCnpj">CNPJ</label>
+          <input id="cscieCnpj" type="text" inputmode="numeric" autocomplete="off"
+                 maxlength="18" placeholder="00.000.000/0000-00">
+        </div>
+        <div class="cscie-field">
+          <label for="cscieRazao">Razão social</label>
+          <output id="cscieRazao" class="cscie-razao">—</output>
+        </div>
+      </div>
+      <p id="cscieCnpjMsg" class="cscie-hint" hidden></p>
+    </section>
+
+    <!-- Passo 2: arquivos -->
+    <section class="cscie-card">
+      <span class="cscie-step">2</span>
+      <h2 class="cscie-card-title">Relatórios de Apuração de ICMS</h2>
+      <p class="cscie-hint">
+        Um arquivo por estabelecimento — relatório <code>ICMSProprio</code> exportado em
+        <code>.csv</code>. Aceita também <code>.txt</code> e <code>.zip</code>.
+      </p>
+      <label class="cscie-dropzone" id="cscieDropzone">
+        <input id="cscieArquivos" type="file" accept=".csv,.txt,.zip" multiple hidden>
+        <span class="cscie-dropzone-text">Clique para escolher ou arraste os arquivos aqui</span>
+        <span id="cscieLista" class="cscie-lista"></span>
+      </label>
+    </section>
+
+    <!-- Passo 3: metodologia (accordion FECHADO) + ação -->
+    <section class="cscie-card">
+      <span class="cscie-step">3</span>
+      <h2 class="cscie-card-title">Calcular</h2>
+
+      <details class="cscie-metodologia">
+        <summary>Metodologia e base legal</summary>
+        <div class="cscie-metodologia-body">
+          <p>O cálculo é feito <strong>exclusivamente sobre o último mês de apuração de
+             cada estabelecimento</strong>, sem retrocesso na série histórica:</p>
+          <p class="cscie-formula">
+            % exportação = faturamento de exportação ÷ faturamento total<br>
+            correção = saldo credor de ICMS × % exportação
+          </p>
+          <p>Os três componentes vêm do <strong>mesmo mês</strong>. O saldo credor é um
+             estoque: o número que interessa é o disponível agora, e o percentual tem de
+             ser medido no mesmo mês do estoque.</p>
+          <p><strong>Exportação:</strong> direta, todo CFOP do grupo 7; indireta, remessa
+             com fim específico de exportação (5501-5505 e 6501-6505). Devolução/retorno
+             de exportação é abatida do mês em que ocorreu.</p>
+          <p><strong>Faturamento total:</strong> apenas CFOPs de venda somados aos de
+             exportação. <em>Transferência entre estabelecimentos da própria empresa
+             (5151/5152/5153/6151/6152/6153), remessas, bonificações e devoluções não
+             entram no denominador</em> — transferência não é faturamento, e incluí-la
+             derrubaria o percentual sem justificativa técnica.</p>
+          <p><strong>Por estabelecimento:</strong> a apuração de ICMS é por inscrição
+             estadual, então cada estabelecimento tem o seu mês de referência, o seu
+             percentual e o seu saldo credor. O total é a soma das correções calculadas.</p>
+          <p><strong>Origem dos dados:</strong> Seção 19 (Valor Operacional por CFOP -
+             Saídas/Prestações) e Seção 22 (Abertura Saldo a Transportar por CNPJ) do
+             relatório, correspondentes aos registros C190 e E110 da EFD ICMS/IPI.</p>
+          <p><strong>Base legal:</strong> art. 25, §1º, I, da LC 87/96 — o crédito
+             acumulado decorrente de exportação é de livre disposição, diferente do
+             acumulado por outras causas; daí a necessidade de demonstrar origem e
+             proporção. O valor apurado é a <em>estimativa da parcela proporcional às
+             exportações</em>, e não crédito já habilitado à transferência.</p>
+        </div>
+      </details>
+
+      <button id="cscieBtnCalcular" type="button" class="cscie-btn cscie-btn-primary" disabled>
+        Calcular
+      </button>
+      <p id="cscieBtnAviso" class="cscie-nota">Consulte o CNPJ e envie os relatórios para habilitar o cálculo.</p>
+    </section>
+
+    <!-- Progresso -->
+    <section class="cscie-card" id="cscieProgresso" hidden>
+      <h2 class="cscie-card-title">Processando…</h2>
+      <p class="cscie-hint">Protocolo <strong id="cscieProtocolo">—</strong> ·
+         <span id="cscieDecorrido">0 s</span></p>
+      <div class="cscie-bar"><div id="cscieBarFill" class="cscie-bar-fill"></div></div>
+      <p id="cscieProgressoMsg" class="cscie-progresso-msg"></p>
+    </section>
+
+    <!-- Resultado -->
+    <section id="cscieResultado" hidden>
+
+      <!-- faixa de veredito: a explicação em prosa é o elemento principal -->
+      <div id="cscieVeredito" class="cscie-veredito">
+        <div class="cscie-veredito-topo">
+          <div id="cscieVereditoValor" class="cscie-veredito-valor" hidden></div>
+          <button id="cscieBtnCopiar" type="button" class="cscie-btn cscie-btn-secondary cscie-btn-copiar">
+            Copiar explicação
+          </button>
+        </div>
+        <p id="cscieVereditoTexto" class="cscie-veredito-texto"></p>
+      </div>
+
+      <div id="cscieAvisos" class="cscie-avisos" hidden></div>
+
+      <!-- KPIs: só quando houve cálculo -->
+      <div id="cscieKpis" class="cscie-kpis" hidden></div>
+
+      <section class="cscie-card">
+        <h2 class="cscie-card-title">Por estabelecimento</h2>
+        <div class="cscie-tabela-rolagem">
+          <table class="cscie-tabela" id="cscieTabela">
+            <thead>
+              <tr>
+                <th>CNPJ</th><th>UF</th><th>Último mês<br>de apuração</th>
+                <th>Faturamento<br>do mês</th><th>Exportação<br>do mês</th>
+                <th>%</th><th>Saldo credor<br>de ICMS</th><th>Status</th>
+                <th>Correção (R$)</th>
+              </tr>
+            </thead>
+            <tbody id="cscieTabelaCorpo"></tbody>
+            <tfoot id="cscieTabelaRodape"></tfoot>
+          </table>
+        </div>
+        <p class="cscie-nota">Clique em <strong>ver motivo</strong> para ler a explicação
+           completa da linha.</p>
+      </section>
+
+      <details class="cscie-card cscie-conferencia">
+        <summary>Série mensal — material de conferência (não integra o cálculo)</summary>
+        <div class="cscie-conferencia-body">
+          <div class="cscie-field cscie-field-sm">
+            <label for="cscieSeletor">Estabelecimento</label>
+            <select id="cscieSeletor"></select>
+          </div>
+          <div class="cscie-tabela-rolagem">
+            <table class="cscie-tabela" id="cscieSerie">
+              <thead>
+                <tr><th>Mês</th><th>Faturamento total</th><th>Faturamento de exportação</th>
+                    <th>% Exportação</th><th>Saldo credor de ICMS</th></tr>
+              </thead>
+              <tbody id="cscieSerieCorpo"></tbody>
+            </table>
+          </div>
+          <p class="cscie-nota">A linha destacada é o mês de referência do cálculo.
+             Célula de saldo credor vazia indica mês sem escrituração do estabelecimento.</p>
+        </div>
+      </details>
+
+      <section class="cscie-card cscie-card-download">
+        <a id="cscieDownload" class="cscie-btn cscie-btn-primary" href="#" download>
+          Baixar planilha auditável
+        </a>
+        <p class="cscie-nota">Três abas: Cálculo, Série Mensal (conferência) e Exportações,
+           com fórmulas reais. O link é de uso único e expira.</p>
+      </section>
+    </section>
+
+    <section class="cscie-card cscie-card-erro" id="cscieErro" hidden>
+      <h2 class="cscie-card-title">Não foi possível concluir</h2>
+      <p id="cscieErroMsg" class="cscie-erro-msg"></p>
+    </section>
+
+  </main>
+</div>

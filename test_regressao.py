@@ -1,0 +1,307 @@
+# -*- coding: utf-8 -*-
+"""
+test_regressao.py — os DOZE testes de aceitação da ferramenta. Ferramenta LOCAL de
+desenvolvimento: não vai para o HUB (como o test_app.py).
+
+    python test_regressao.py                      # só a fixture sintética
+    python test_regressao.py "C:\\caminho\\do\\sped"  # + o caso real de referência
+
+A fixture sintética (pasta `fixtures/`) valida o caminho do CÁLCULO: R$ 62.000,00.
+O caso real valida os dois caminhos de NÃO-CÁLCULO — e o resultado esperado nele é
+NENHUMA correção. Os relatórios reais NÃO ficam no repositório; passe a pasta onde
+eles estão. Sem o argumento, os testes do caso real são anunciados como não
+executados (nunca silenciosamente omitidos).
+"""
+
+import glob
+import os
+import shutil
+import sys
+import tempfile
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import logica
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FIXTURES = os.path.join(BASE_DIR, "fixtures")
+
+CNPJ_FIXTURE = "12345678000190"
+RAZAO_FIXTURE = "Empresa Exemplo Indústria Ltda"
+RAZAO_REAL = "Empresa do caso de referência"
+
+
+def cnpj_do_arquivo(caminho):
+    """CNPJ lido do próprio relatório.
+
+    Nenhum identificador de cliente fica no repositório: quem tem os arquivos roda
+    o teste; quem não tem, só vê os testes da fixture.
+    """
+    parte = logica.listar_partes([caminho])[0]
+    with logica.abrir_linhas(parte) as fluxo:
+        return logica.parse_apuracao_mensal(fluxo, caminho)["cnpj"]
+
+_falhas = []
+_ok = 0
+
+
+def checar(condicao, titulo, detalhe=""):
+    global _ok
+    if condicao:
+        _ok += 1
+        print("  [OK]    %s" % titulo)
+    else:
+        _falhas.append(titulo + (" — " + detalhe if detalhe else ""))
+        print("  [FALHOU] %s%s" % (titulo, ("  ->  " + detalhe) if detalhe else ""))
+
+
+def quase(a, b, tol=0.005):
+    return a is not None and abs(a - b) <= tol
+
+
+def por_cnpj(res, sufixo):
+    for e in res["estabelecimentos"]:
+        if e["cnpj"].endswith(sufixo):
+            return e
+    return None
+
+
+def gerar_excel_tmp(res, nome):
+    destino = os.path.join(tempfile.gettempdir(), "regressao_cscie", nome)
+    return logica.gerar_excel_auditavel(res, destino)
+
+
+def sem_clausula_de_exportacao(est):
+    """O desfecho 'sem saldo credor' não pode apresentar a exportação como o obstáculo.
+
+    Não basta procurar a palavra "exportação": o próprio template a cita para
+    DESCARTÁ-LA ("independentemente de haver ou não operações de exportação no
+    período"). O que reprova é a frase acusatória do outro desfecho ou qualquer
+    cláusula extra grudada no fim — então o teste exige a string EXATA do template.
+    """
+    contexto = ""
+    if est["ultimo_mes_com_saldo"]:
+        contexto = logica.TPL_CONTEXTO_ULTIMO_SALDO.format(
+            mes=est["ultimo_mes_com_saldo"]["mes"],
+            valor=logica.fmt_brl(est["ultimo_mes_com_saldo"]["valor"]))
+    esperado = logica.TPL_SEM_SALDO_CREDOR.format(mes_ref=est["mes_ref"], contexto=contexto)
+    acusatorias = ("não houve operação de exportação", "também não", "e além disso",
+                   "nem houve exporta")
+    return (est["explicacao"] == esperado
+            and not any(t in est["explicacao"].lower() for t in acusatorias))
+
+
+# =============================================================================
+# Fixture sintética — o caminho do cálculo
+# =============================================================================
+def testar_fixture():
+    print("\n=== FIXTURE SINTÉTICA (caminho do cálculo) " + "=" * 34)
+    arquivos = sorted(glob.glob(os.path.join(FIXTURES, "*.csv")))
+    if len(arquivos) != 4:
+        print("  !! fixture não encontrada em %s — rode: python "
+              "gerar_fixture_sintetica.py fixtures" % FIXTURES)
+        _falhas.append("fixture ausente")
+        return None
+
+    res = logica.processar_saldo_credor(arquivos, CNPJ_FIXTURE, RAZAO_FIXTURE)
+    a, b, c, d = (por_cnpj(res, "000190"), por_cnpj(res, "000271"),
+                  por_cnpj(res, "000352"), por_cnpj(res, "000433"))
+
+    checar(quase(res["totais"]["correcao"], 62000.00),
+           "TOTAL da fixture = R$ 62.000,00", logica.fmt_brl(res["totais"]["correcao"]))
+    checar(quase(a["correcao"], 50000.00) and quase(a["percentual"], 0.10),
+           "A calcula R$ 50.000,00 com 10,00% (transferência FORA do denominador)",
+           "%s / %s" % (logica.fmt_brl(a["correcao"]), logica.fmt_pct(a["percentual"])))
+    checar(quase(a["faturamento"], 1000000.00),
+           "A: faturamento do mês = R$ 1.000.000,00, não R$ 6.000.000,00",
+           logica.fmt_brl(a["faturamento"]))
+    checar(b["status"] == logica.STATUS_SEM_EXPORTACAO and b["correcao"] is None,
+           "B: sem exportação no último mês, sem retroceder para AGO/2025", b["status"])
+    checar(c["status"] == logica.STATUS_SEM_SALDO_CREDOR and c["correcao"] is None,
+           "C: sem saldo credor no último mês", c["status"])
+    checar(sem_clausula_de_exportacao(c),
+           "C: curto-circuito — a explicação não culpa a exportação "
+           "(ele exportou R$ 30.000,00 em DEZ/2025)", c["explicacao"])
+    checar("SET/2025" in c["explicacao"] and "45.000,00" in c["explicacao"],
+           "C: frase de contexto com SET/2025 e R$ 45.000,00")
+    checar(d["mes_ref"] == "NOV/2025" and "NOV/2025" in d["explicacao"],
+           "D: mês de referência por estabelecimento (NOV/2025)", d["mes_ref"])
+    checar(quase(d["correcao"], 12000.00) and quase(d["percentual"], 0.12),
+           "D calcula R$ 12.000,00 com 12,00%", logica.fmt_brl(d["correcao"]))
+    checar(not [av for av in res["avisos"] if "Seção 19 divergiu" in av],
+           "check Seção 1 × Seção 19 fecha nos 4 arquivos", "; ".join(res["avisos"]))
+    return res
+
+
+# =============================================================================
+# Caso real de referência — os dois caminhos de NÃO-CÁLCULO
+# =============================================================================
+ESPERADO_REAL = {
+    "000102": ("RS", "MAI/2026", 4343256.97, 0.0, 1814875.92, logica.STATUS_SEM_EXPORTACAO),
+    "000374": ("ES", "MAI/2026", 1332773.85, 0.0, 18527.16, logica.STATUS_SEM_EXPORTACAO),
+    "000455": ("ES", "MAI/2026", 843668.47, 0.0, 1343.85, logica.STATUS_SEM_EXPORTACAO),
+    "000536": ("RS", "MAI/2026", 13400344.83, 0.0, 0.0, logica.STATUS_SEM_SALDO_CREDOR),
+    "000617": ("SP", "ABR/2026", 2992360.75, 0.0, 921945.17, logica.STATUS_SEM_EXPORTACAO),
+    "000706": ("RS", "MAI/2026", 0.0, 0.0, 56935.58, logica.STATUS_SEM_EXPORTACAO),
+    "000889": ("RS", "MAI/2026", 34233.00, 0.0, 1072174.23, logica.STATUS_SEM_EXPORTACAO),
+}
+# valores que denunciam metodologia errada (seção 6.2 do briefing)
+PROIBIDOS = {"retrocesso na série": 40897.08, "soma dos meses com exportação": 1610515.70,
+             "percentual do período": 8240.72}
+
+
+def testar_caso_real(pasta):
+    print("\n=== CASO REAL DE REFERÊNCIA (não-cálculo) " + "=" * 35)
+    arquivos = sorted(glob.glob(os.path.join(pasta, "ICMSProprio*.csv")))
+    if len(arquivos) != 7:
+        print("  -- NÃO EXECUTADO: esperava 7 relatórios ICMSProprio*.csv em %s "
+              "(achei %d)." % (pasta, len(arquivos)))
+        return None
+
+    cnpj_real = cnpj_do_arquivo(arquivos[0])
+    res = logica.processar_saldo_credor(arquivos, cnpj_real, RAZAO_REAL)
+
+    # 1 — não inventar resultado
+    checar(res["totais"]["correcao"] is None
+           and all(e["correcao"] is None for e in res["estabelecimentos"])
+           and all(e["percentual"] is None for e in res["estabelecimentos"]),
+           "1. Nenhuma correção calculada — nem R$ 0,00 em coluna de valor",
+           str(res["totais"]["correcao"]))
+
+    # 2, 3, 4 — números que denunciariam metodologia errada
+    todos = [e["correcao"] for e in res["estabelecimentos"] if e["correcao"] is not None]
+    todos.append(res["totais"]["correcao"] or 0.0)
+    for nome, proibido in PROIBIDOS.items():
+        checar(not any(quase(v, proibido, 1.0) for v in todos),
+               "%s. Não aparece R$ %s (%s)"
+               % (2 + list(PROIBIDOS).index(nome), "{:,.2f}".format(proibido), nome))
+
+    # 5, 7, 12 — mês, UF, valores e status por estabelecimento
+    for sufixo, (uf, mes, fat, exp, saldo, status) in ESPERADO_REAL.items():
+        e = por_cnpj(res, sufixo)
+        okz = (e and e["uf"] == uf and e["mes_ref"] == mes and quase(e["faturamento"], fat)
+               and quase(e["exportacao"], exp) and quase(e["saldo_credor"], saldo)
+               and e["status"] == status)
+        checar(okz, "…%s: %s, %s, %s, saldo %s, %s"
+               % (sufixo, uf, mes, logica.fmt_brl(fat), logica.fmt_brl(saldo), status),
+               "" if okz else "veio %s" % ({k: e[k] for k in
+                                            ("uf", "mes_ref", "faturamento", "exportacao",
+                                             "saldo_credor", "status")} if e else None))
+
+    # 6 — curto-circuito: o sem-saldo não pode citar exportação
+    e536 = por_cnpj(res, "000536")
+    checar(sem_clausula_de_exportacao(e536),
+           "6. Curto-circuito: explicação do …0536 não culpa a exportação",
+           e536["explicacao"])
+    checar(e536["ultimo_mes_com_saldo"]
+           and e536["ultimo_mes_com_saldo"]["mes"] == "FEV/2026"
+           and "122.907,55" in e536["explicacao"],
+           "6b. …0536 traz o contexto FEV/2026 com R$ 122.907,55")
+
+    # 7 — o último mês é por estabelecimento
+    e617 = por_cnpj(res, "000617")
+    checar("ABR/2026" in e617["explicacao"] and "MAI/2026" not in e617["explicacao"],
+           "7. Explicação do …0617 cita ABR/2026 e não MAI/2026", e617["explicacao"])
+
+    # 9 — check Seção 1 × Seção 19
+    checar(not [av for av in res["avisos"] if "Seção 19 divergiu" in av],
+           "9. Seção 1 × Seção 19 fecha nos 7 arquivos (R$ 0,00)",
+           "; ".join(res["avisos"]))
+
+    # 10 — validação de CNPJ raiz: os 7 passam juntos; raiz estranha aborta
+    checar(len(res["estabelecimentos"]) == 7,
+           "10a. Os 7 estabelecimentos da mesma raiz passam juntos")
+    intruso = os.path.join(FIXTURES, "FIXTURE_ICMSProprio_A_calcula.csv")
+    try:
+        logica.processar_saldo_credor(arquivos + [intruso], cnpj_real, RAZAO_REAL)
+        checar(False, "10b. Arquivo de outra raiz aborta com erro de negócio",
+               "processou sem reclamar")
+    except logica.ErroDeNegocio as erro:
+        checar("não corresponde à empresa consultada" in str(erro),
+               "10b. Arquivo de outra raiz aborta com erro de negócio", str(erro)[:90])
+
+    # 12 — saldo estático qualifica o primeiro critério
+    e374 = por_cnpj(res, "000374")
+    estaticos = sum(1 for r in e374["serie"] if quase(r["saldo_credor"] or 0, 18527.16))
+    checar(e374["status"] == logica.STATUS_SEM_EXPORTACAO and estaticos >= 6,
+           "12. Saldo estático (…0374, 6 meses iguais) passa o 1º critério e "
+           "trava só na exportação", "%d meses iguais, status %s"
+           % (estaticos, e374["status"]))
+    return res
+
+
+# =============================================================================
+# 8 e 11 — a explicação é a MESMA string em todo canal; sem-oportunidade tem Excel
+# =============================================================================
+def testar_excel(res, nome_arquivo, titulo):
+    from openpyxl import load_workbook
+    caminho = gerar_excel_tmp(res, nome_arquivo)
+    checar(os.path.getsize(caminho) > 5000,
+           "11. Excel gerado e disponível (%s)" % titulo,
+           "%d bytes" % os.path.getsize(caminho))
+
+    wb = load_workbook(caminho)
+    checar(wb.sheetnames == ["Cálculo", "Série Mensal (conferência)", "Exportações"],
+           "Excel com as 3 abas na ordem", str(wb.sheetnames))
+    ws = wb["Cálculo"]
+
+    iguais = True
+    for i, est in enumerate(res["estabelecimentos"]):
+        if ws.cell(row=15 + i, column=11).value != est["explicacao"]:
+            iguais = False
+    checar(iguais, "8. Coluna Explicação do Excel == explicação do JSON, "
+                   "palavra por palavra (%s)" % titulo)
+
+    calculou = res["totais"]["correcao"] is not None
+    for i, est in enumerate(res["estabelecimentos"]):
+        r = 15 + i
+        pct, corr = ws.cell(row=r, column=7).value, ws.cell(row=r, column=10).value
+        esperado_pct = '=IF($I{0}<>"Calculado","",IF(E{0}=0,0,F{0}/E{0}))'.format(r)
+        esperado_corr = '=IF($I{0}<>"Calculado","",H{0}*G{0})'.format(r)
+        if pct != esperado_pct or corr != esperado_corr:
+            checar(False, "Fórmulas reais na linha %d" % r, "%s | %s" % (pct, corr))
+            break
+    else:
+        checar(True, "Fórmulas reais em % Exportação e Correção (nunca número solto)")
+
+    n = len(res["estabelecimentos"])
+    total_cel = ws.cell(row=15 + n, column=10).value
+    checar(total_cel == '=IF(COUNT(J15:J{0})=0,"",SUM(J15:J{0}))'.format(14 + n),
+           "TOTAL soma apenas os calculados", str(total_cel))
+    veredito = ws["B11"].value
+    checar((veredito == "SEM OPORTUNIDADE") if not calculou
+           else quase(veredito, round(res["totais"]["correcao"], 2)),
+           "Bloco de veredito coerente com o desfecho (%s)" % titulo, str(veredito))
+    checar(ws["E11"].value == res["explicacao_consolidada"],
+           "Explicação consolidada no Excel == a da tela")
+    return caminho
+
+
+def main():
+    res_fix = testar_fixture()
+    if res_fix:
+        print("\n--- Excel da fixture " + "-" * 55)
+        testar_excel(res_fix, "fixture.xlsx", "fixture, com cálculo")
+
+    pasta_real = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("CSCIE_SPED_REAL", "")
+    if pasta_real:
+        res_real = testar_caso_real(pasta_real)
+        if res_real:
+            print("\n--- Excel do caso real " + "-" * 53)
+            testar_excel(res_real, "caso_real.xlsx", "caso real, sem oportunidade")
+    else:
+        print("\n=== CASO REAL DE REFERÊNCIA " + "=" * 49)
+        print("  -- NÃO EXECUTADO: passe a pasta dos relatórios reais como argumento.")
+        print("     Os relatórios do cliente não ficam no repositório, de propósito.")
+
+    print("\n" + "=" * 76)
+    print("%d verificações OK, %d falha(s)." % (_ok, len(_falhas)))
+    for f in _falhas:
+        print("  FALHOU: %s" % f)
+    shutil.rmtree(os.path.join(tempfile.gettempdir(), "regressao_cscie"),
+                  ignore_errors=True)
+    return 1 if _falhas else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

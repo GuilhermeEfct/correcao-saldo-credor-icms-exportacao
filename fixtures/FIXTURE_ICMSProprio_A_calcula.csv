@@ -1,0 +1,38 @@
+﻿ICMSProprio - 1. Resumo ICMS - [ E110 - VL_TOT_DEBITOS ] - Valor total dos débitos
+[ E110 - VL_TOT_CREDITOS ] - Valor total dos créditos
+[ E110 -  VL_SLD_CREDOR_ANT ] - Valor total de "Saldo credor do período anterior"
+[ E110 -  VL_SLD_CREDOR_TRANSPORTAR ] - Valor total de "Saldo credor a transportar para o período seguinte"
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+Valor Operacional - Saídas/Prestações;4.700.000,00;4.990.000,00;5.300.000,00;5.550.000,00;5.680.000,00;6.000.000,00
+( = ) Total dos débitos   ➤  Débito;94.000,00;99.800,00;106.000,00;111.000,00;113.600,00;120.000,00
+( = ) Total dos Créditos   ➤  Crédito;235.000,00;249.500,00;265.000,00;277.500,00;284.000,00;300.000,00
+  ➦  ( + ) Saldo Credor do Período Anterior;0,00;300.000,00;350.000,00;400.000,00;430.000,00;470.000,00
+            💲  Total de ICMS a Recolher;0,00;0,00;0,00;0,00;0,00;0,00
+  ➥  Saldo Credor a Transportar - Período Seguinte;300.000,00;350.000,00;400.000,00;430.000,00;470.000,00;500.000,00
+
+
+ICMSProprio - 19. Valor Operacional por CFOP - Saídas/Prestações - [ C190 - VL_OPR ] - Valor da operação
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+5101 - Venda prod do estab;700.000,00;750.000,00;800.000,00;850.000,00;880.000,00;900.000,00
+5151 - Transf prod;4.000.000,00;4.200.000,00;4.500.000,00;4.700.000,00;4.800.000,00;5.000.000,00
+7101 - Venda prod do estab;0,00;40.000,00;0,00;0,00;0,00;100.000,00
+
+
+ICMSProprio - 20. Valor Operacional por CFOP - Entradas/Aquisições - [ C190 - VL_OPR ] - Valor da operação
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+1101 - Compra p/indust ou prod rural;2.820.000,00;2.994.000,00;3.180.000,00;3.330.000,00;3.408.000,00;3.600.000,00
+
+
+ICMSProprio - 21. Abertura Saldo Credor por CNPJ - [ E110 VL_SLD_CREDOR_ANT] - Valor do saldo credor período anterior
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000190 - RS;0,00;300.000,00;350.000,00;400.000,00;430.000,00;470.000,00
+
+
+ICMSProprio - 22. Abertura Saldo a Transportar por CNPJ - [ E110 VL_SLD_CREDOR_TRANSPORTAR] - Valor do saldo credor à transportar para o período seguinte
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000190 - RS;300.000,00;350.000,00;400.000,00;430.000,00;470.000,00;500.000,00
+
+
+ICMSProprio - 23. Abertura ICMS a Recolher por CNPJ - [ E110 VL_ICMS_RECOLHER] - Valor do ICMS a recolher
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000190 - RS;0,00;0,00;0,00;0,00;0,00;0,00

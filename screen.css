@@ -1,0 +1,327 @@
+/* screen.css — estilo da ferramenta, TODO escopado sob #tool-correcao-saldo-credor-icms.
+   Paleta oficial Grupo EFCT: petróleo #001C26 | oliva #B3BC2B | ciano #4DBDF5 |
+   creme #FEFEDF | âmbar #F59E0B. Tipografia Bebas Neue + Exo 2, carregadas pelo HUB.
+   Mesma linguagem visual da ferramenta-irmã (credito-icms-uso-consumo-exportacao). */
+
+#tool-correcao-saldo-credor-icms {
+  --efct-petroleo: #001C26;
+  --efct-oliva: #B3BC2B;
+  --efct-ciano: #4DBDF5;
+  --efct-creme: #FEFEDF;
+  --efct-ambar: #F59E0B;
+  --efct-cinza: #B4B4B4;
+  --efct-sucesso: #22C55E;
+  --efct-erro: #DC2626;
+  --efct-borda: #E5E7EB;
+  --efct-texto2: #6B7280;
+  --cscie-radius: 12px;
+  --cscie-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+
+  font-family: "Exo 2", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #111827;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 8px 16px 40px;
+  box-sizing: border-box;
+}
+#tool-correcao-saldo-credor-icms *,
+#tool-correcao-saldo-credor-icms *::before,
+#tool-correcao-saldo-credor-icms *::after { box-sizing: border-box; }
+
+/* ---------- Header ---------- */
+#tool-correcao-saldo-credor-icms .cscie-header {
+  background: var(--efct-petroleo);
+  border-radius: var(--cscie-radius);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  color: #fff;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+#tool-correcao-saldo-credor-icms .cscie-header-brand {
+  display: flex; align-items: center; gap: 16px;
+}
+/* "Limpar tudo" sobre o fundo petróleo: contorno claro, sem competir com o
+   botão primário de ação */
+#tool-correcao-saldo-credor-icms .cscie-btn-limpar {
+  background: transparent; color: #fff; font-size: 13px; padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, .55); flex: 0 0 auto;
+}
+#tool-correcao-saldo-credor-icms .cscie-btn-limpar:hover {
+  background: rgba(255, 255, 255, .12); border-color: #fff;
+}
+#tool-correcao-saldo-credor-icms .cscie-icon {
+  width: 40px; height: 40px; color: var(--efct-oliva); flex: 0 0 auto;
+}
+#tool-correcao-saldo-credor-icms .cscie-title {
+  font-family: "Bebas Neue", "Exo 2", sans-serif;
+  font-weight: 400; letter-spacing: .5px;
+  font-size: 32px; line-height: 1.05; margin: 0;
+}
+#tool-correcao-saldo-credor-icms .cscie-subtitle {
+  margin: 4px 0 0; font-size: 14px; color: #c9d4d8;
+}
+
+/* ---------- Cards ---------- */
+#tool-correcao-saldo-credor-icms .cscie-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--efct-borda);
+  border-radius: var(--cscie-radius);
+  box-shadow: var(--cscie-shadow);
+  padding: 22px 24px;
+  margin-bottom: 18px;
+}
+#tool-correcao-saldo-credor-icms .cscie-card-erro { border-left: 4px solid var(--efct-erro); }
+#tool-correcao-saldo-credor-icms .cscie-card-download { text-align: center; }
+#tool-correcao-saldo-credor-icms .cscie-step {
+  position: absolute; top: -12px; left: 20px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--efct-oliva); color: var(--efct-petroleo);
+  font-weight: 700; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+#tool-correcao-saldo-credor-icms .cscie-card-title {
+  font-family: "Exo 2", sans-serif; font-weight: 600;
+  font-size: 20px; margin: 0 0 12px;
+}
+#tool-correcao-saldo-credor-icms .cscie-hint {
+  font-size: 13px; color: #5b6b72; margin: 0 0 14px;
+}
+#tool-correcao-saldo-credor-icms .cscie-nota {
+  font-size: 12px; color: #7a888e; margin: 10px 0 0;
+}
+#tool-correcao-saldo-credor-icms code {
+  background: #eef2f4; padding: 1px 5px; border-radius: 4px; font-size: 12px;
+}
+
+/* ---------- Campos ---------- */
+#tool-correcao-saldo-credor-icms .cscie-field-row {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+}
+#tool-correcao-saldo-credor-icms .cscie-field {
+  display: flex; flex-direction: column; flex: 1 1 260px;
+}
+#tool-correcao-saldo-credor-icms .cscie-field-sm { flex: 0 1 220px; }
+#tool-correcao-saldo-credor-icms .cscie-field label {
+  font-size: 13px; color: #111827; margin-bottom: 6px; font-weight: 600;
+}
+#tool-correcao-saldo-credor-icms input[type="text"],
+#tool-correcao-saldo-credor-icms select {
+  font-family: inherit; font-size: 15px;
+  border: 1px solid var(--efct-borda); border-radius: 8px;
+  padding: 10px 12px; outline: none; transition: border-color .15s;
+  width: 100%; background: #fff; color: inherit;
+}
+#tool-correcao-saldo-credor-icms input[type="text"]:focus,
+#tool-correcao-saldo-credor-icms select:focus { border-color: var(--efct-ciano); }
+#tool-correcao-saldo-credor-icms .cscie-razao {
+  display: block; font-size: 15px; font-weight: 600; color: var(--efct-petroleo);
+  border-bottom: 1px solid var(--efct-borda); padding: 10px 2px; min-height: 42px;
+}
+#tool-correcao-saldo-credor-icms .cscie-razao-vazia {
+  font-weight: 400; color: var(--efct-cinza);
+}
+
+/* ---------- Botões ---------- */
+#tool-correcao-saldo-credor-icms .cscie-btn {
+  font-family: inherit; font-size: 15px; font-weight: 600;
+  border: none; border-radius: 8px; padding: 11px 22px;
+  cursor: pointer; transition: filter .15s, opacity .15s;
+  text-decoration: none; display: inline-block; text-align: center;
+}
+#tool-correcao-saldo-credor-icms .cscie-btn-primary {
+  background: var(--efct-petroleo); color: #fff; margin-top: 16px;
+}
+#tool-correcao-saldo-credor-icms .cscie-btn-primary:hover { filter: brightness(1.25); }
+#tool-correcao-saldo-credor-icms .cscie-btn-primary:disabled {
+  opacity: .45; cursor: not-allowed; filter: none;
+}
+#tool-correcao-saldo-credor-icms .cscie-btn-secondary {
+  background: #fff; color: var(--efct-petroleo);
+  border: 1px solid var(--efct-petroleo); padding: 8px 16px; font-size: 13px;
+}
+#tool-correcao-saldo-credor-icms .cscie-btn-secondary:hover { background: #eef2f4; }
+#tool-correcao-saldo-credor-icms .cscie-btn-copiar { flex: 0 0 auto; }
+
+/* ---------- Dropzone ---------- */
+#tool-correcao-saldo-credor-icms .cscie-dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  border: 2px dashed #cdd6da; border-radius: 10px;
+  padding: 26px; cursor: pointer; text-align: center;
+  transition: border-color .15s, background .15s;
+}
+#tool-correcao-saldo-credor-icms .cscie-dropzone:hover {
+  border-color: var(--efct-ciano); background: #f7fbfd;
+}
+#tool-correcao-saldo-credor-icms .cscie-dropzone-text { color: #5b6b72; font-size: 14px; }
+#tool-correcao-saldo-credor-icms .cscie-lista {
+  font-size: 13px; color: var(--efct-petroleo); font-weight: 600;
+}
+
+/* ---------- Metodologia (recolhida) ---------- */
+#tool-correcao-saldo-credor-icms .cscie-metodologia {
+  margin: 0 0 4px; border-top: 1px solid #eef2f4; padding-top: 12px;
+}
+#tool-correcao-saldo-credor-icms .cscie-metodologia summary,
+#tool-correcao-saldo-credor-icms .cscie-conferencia > summary {
+  cursor: pointer; font-weight: 600; font-size: 14px;
+  color: var(--efct-petroleo); list-style: none;
+}
+#tool-correcao-saldo-credor-icms .cscie-metodologia summary::before,
+#tool-correcao-saldo-credor-icms .cscie-conferencia > summary::before {
+  content: "\25B8  "; color: var(--efct-oliva);
+}
+#tool-correcao-saldo-credor-icms .cscie-metodologia[open] summary::before,
+#tool-correcao-saldo-credor-icms .cscie-conferencia[open] > summary::before {
+  content: "\25BE  ";
+}
+#tool-correcao-saldo-credor-icms .cscie-metodologia-body {
+  font-size: 13px; color: #45555c; padding: 10px 2px 0;
+}
+#tool-correcao-saldo-credor-icms .cscie-metodologia-body p { margin: 0 0 10px; }
+#tool-correcao-saldo-credor-icms .cscie-formula {
+  background: #eef2f4; border-left: 3px solid var(--efct-oliva);
+  padding: 10px 12px; font-weight: 600; color: var(--efct-petroleo);
+}
+
+/* ---------- Progresso ---------- */
+#tool-correcao-saldo-credor-icms .cscie-bar {
+  background: #eef2f4; border-radius: 999px; height: 12px; overflow: hidden;
+}
+#tool-correcao-saldo-credor-icms .cscie-bar-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--efct-ciano), var(--efct-oliva));
+  transition: width .3s ease;
+}
+#tool-correcao-saldo-credor-icms .cscie-progresso-msg {
+  font-size: 13px; color: #5b6b72; margin: 10px 0 0;
+}
+#tool-correcao-saldo-credor-icms .cscie-erro-msg {
+  color: var(--efct-erro); font-size: 14px; margin: 0;
+}
+
+/* ---------- Faixa de veredito ----------
+   A explicação em prosa é o elemento principal do resultado, não um rodapé:
+   corpo 16 px, com destaque. Três aparências conforme o desfecho. */
+#tool-correcao-saldo-credor-icms .cscie-veredito {
+  border-radius: var(--cscie-radius);
+  padding: 20px 24px;
+  margin-bottom: 18px;
+  border-left: 6px solid var(--efct-cinza);
+  background: #f4f5f6;
+  box-shadow: var(--cscie-shadow);
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-calculado {
+  border-left-color: var(--efct-oliva); background: var(--efct-creme);
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-sem-exportacao {
+  border-left-color: var(--efct-ambar); background: #FEF6E7;
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-sem-saldo {
+  border-left-color: var(--efct-cinza); background: #f4f5f6;
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-topo {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-valor {
+  font-family: "Bebas Neue", "Exo 2", sans-serif;
+  font-size: 40px; line-height: 1.1; color: var(--efct-petroleo); letter-spacing: .5px;
+}
+#tool-correcao-saldo-credor-icms .cscie-veredito-texto {
+  font-size: 16px; line-height: 1.5; color: #111827; margin: 8px 0 0; max-width: 90ch;
+}
+
+/* ---------- Avisos ---------- */
+#tool-correcao-saldo-credor-icms .cscie-avisos {
+  border: 1px solid var(--efct-ambar); background: #FEF6E7;
+  border-radius: 10px; padding: 12px 16px; margin-bottom: 18px;
+  font-size: 13px; color: #6b4c07;
+}
+#tool-correcao-saldo-credor-icms .cscie-avisos ul { margin: 6px 0 0; padding-left: 20px; }
+#tool-correcao-saldo-credor-icms .cscie-avisos li { margin-bottom: 4px; }
+
+/* ---------- KPIs ---------- */
+#tool-correcao-saldo-credor-icms .cscie-kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi {
+  background: #fff; border: 1px solid var(--efct-borda);
+  border-radius: 10px; padding: 14px 16px; box-shadow: var(--cscie-shadow);
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi-rotulo {
+  font-size: 12px; color: var(--efct-texto2); text-transform: uppercase;
+  letter-spacing: .4px; display: block; margin-bottom: 6px;
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi-valor {
+  font-size: 20px; font-weight: 700; color: var(--efct-petroleo);
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi-destaque {
+  background: var(--efct-petroleo); border-color: var(--efct-petroleo);
+  grid-column: 1 / -1;
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi-destaque .cscie-kpi-rotulo { color: var(--efct-oliva); }
+#tool-correcao-saldo-credor-icms .cscie-kpi-destaque .cscie-kpi-valor {
+  color: #fff; font-family: "Bebas Neue", "Exo 2", sans-serif; font-size: 34px;
+  letter-spacing: .5px; font-weight: 400;
+}
+#tool-correcao-saldo-credor-icms .cscie-kpi-nota {
+  grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--efct-texto2);
+}
+
+/* ---------- Tabelas ---------- */
+#tool-correcao-saldo-credor-icms .cscie-tabela-rolagem { overflow-x: auto; }
+#tool-correcao-saldo-credor-icms .cscie-tabela {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+#tool-correcao-saldo-credor-icms .cscie-tabela th {
+  background: var(--efct-petroleo); color: #fff; font-weight: 600;
+  padding: 8px 10px; text-align: center; white-space: nowrap; font-size: 12px;
+}
+#tool-correcao-saldo-credor-icms .cscie-tabela td {
+  border-bottom: 1px solid var(--efct-borda); padding: 8px 10px; text-align: center;
+}
+#tool-correcao-saldo-credor-icms .cscie-tabela .cscie-num {
+  text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+#tool-correcao-saldo-credor-icms .cscie-tabela .cscie-vazio { color: var(--efct-cinza); }
+#tool-correcao-saldo-credor-icms .cscie-tabela tfoot td {
+  background: var(--efct-petroleo); color: #fff; font-weight: 700; border: none;
+}
+#tool-correcao-saldo-credor-icms .cscie-tag {
+  display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px;
+  padding: 3px 10px; white-space: nowrap;
+}
+#tool-correcao-saldo-credor-icms .cscie-tag-calculado {
+  background: var(--efct-oliva); color: var(--efct-petroleo);
+}
+#tool-correcao-saldo-credor-icms .cscie-tag-sem-exportacao {
+  background: #FEF0D3; color: #6b4c07; border: 1px solid var(--efct-ambar);
+}
+#tool-correcao-saldo-credor-icms .cscie-tag-sem-saldo {
+  background: #eef2f4; color: #45555c; border: 1px solid var(--efct-cinza);
+}
+#tool-correcao-saldo-credor-icms .cscie-ver-motivo {
+  display: block; margin: 4px auto 0; background: none; border: none;
+  font-family: inherit; font-size: 11px; color: var(--efct-ciano);
+  cursor: pointer; text-decoration: underline; padding: 0;
+}
+#tool-correcao-saldo-credor-icms .cscie-motivo td {
+  background: #f7fbfd; text-align: left; font-size: 13px; line-height: 1.5;
+  color: #45555c; padding: 12px 14px;
+}
+#tool-correcao-saldo-credor-icms .cscie-linha-ref td {
+  background: var(--efct-creme); font-weight: 700;
+}
+#tool-correcao-saldo-credor-icms .cscie-conferencia > summary { padding: 2px 0; }
+#tool-correcao-saldo-credor-icms .cscie-conferencia-body { padding-top: 14px; }
+
+/* ---------- Responsivo ---------- */
+@media (max-width: 620px) {
+  #tool-correcao-saldo-credor-icms { padding: 4px 10px 32px; }
+  #tool-correcao-saldo-credor-icms .cscie-title { font-size: 26px; }
+  #tool-correcao-saldo-credor-icms .cscie-field-row { flex-direction: column; align-items: stretch; }
+  #tool-correcao-saldo-credor-icms .cscie-veredito-valor { font-size: 32px; }
+}

@@ -1,0 +1,23 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+outputs/
+static/
+.DS_Store
+
+# dados de cliente NUNCA vao para o repositorio
+*.xlsx
+*.csv
+*.txt
+*.zip
+
+# ... com duas excecoes explicitas, que nao tem dado de cliente.
+# Negacao em vez de "git add -f": o -f depende de alguem lembrar.
+!requirements_extra.txt
+!fixtures/*.csv
+
+# pastas de referencia local - nao fazem parte da entrega
+_ref-team-kit/
+_ref-ferramenta-irma/
+_briefing/

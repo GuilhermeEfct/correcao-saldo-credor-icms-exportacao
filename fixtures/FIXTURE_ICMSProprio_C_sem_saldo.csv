@@ -1,0 +1,37 @@
+﻿ICMSProprio - 1. Resumo ICMS - [ E110 - VL_TOT_DEBITOS ] - Valor total dos débitos
+[ E110 - VL_TOT_CREDITOS ] - Valor total dos créditos
+[ E110 -  VL_SLD_CREDOR_ANT ] - Valor total de "Saldo credor do período anterior"
+[ E110 -  VL_SLD_CREDOR_TRANSPORTAR ] - Valor total de "Saldo credor a transportar para o período seguinte"
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+Valor Operacional - Saídas/Prestações;300.000,00;300.000,00;320.000,00;300.000,00;300.000,00;330.000,00
+( = ) Total dos débitos   ➤  Débito;6.000,00;6.000,00;6.400,00;6.000,00;6.000,00;6.600,00
+( = ) Total dos Créditos   ➤  Crédito;15.000,00;15.000,00;16.000,00;15.000,00;15.000,00;16.500,00
+  ➦  ( + ) Saldo Credor do Período Anterior;0,00;90.000,00;60.000,00;45.000,00;0,00;0,00
+            💲  Total de ICMS a Recolher;0,00;0,00;0,00;0,00;0,00;0,00
+  ➥  Saldo Credor a Transportar - Período Seguinte;90.000,00;60.000,00;45.000,00;0,00;0,00;0,00
+
+
+ICMSProprio - 19. Valor Operacional por CFOP - Saídas/Prestações - [ C190 - VL_OPR ] - Valor da operação
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+5102 - Venda mercad adq/receb terc;300.000,00;300.000,00;300.000,00;300.000,00;300.000,00;300.000,00
+7101 - Venda prod do estab;0,00;0,00;20.000,00;0,00;0,00;30.000,00
+
+
+ICMSProprio - 20. Valor Operacional por CFOP - Entradas/Aquisições - [ C190 - VL_OPR ] - Valor da operação
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+1101 - Compra p/indust ou prod rural;180.000,00;180.000,00;192.000,00;180.000,00;180.000,00;198.000,00
+
+
+ICMSProprio - 21. Abertura Saldo Credor por CNPJ - [ E110 VL_SLD_CREDOR_ANT] - Valor do saldo credor período anterior
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000352 - RS;0,00;90.000,00;60.000,00;45.000,00;0,00;0,00
+
+
+ICMSProprio - 22. Abertura Saldo a Transportar por CNPJ - [ E110 VL_SLD_CREDOR_TRANSPORTAR] - Valor do saldo credor à transportar para o período seguinte
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000352 - RS;90.000,00;60.000,00;45.000,00;0,00;0,00;0,00
+
+
+ICMSProprio - 23. Abertura ICMS a Recolher por CNPJ - [ E110 VL_ICMS_RECOLHER] - Valor do ICMS a recolher
+DESCRIÇÃO;JUL/2025;AGO/2025;SET/2025;OUT/2025;NOV/2025;DEZ/2025
+12345678000352 - RS;0,00;0,00;0,00;0,00;0,00;0,00

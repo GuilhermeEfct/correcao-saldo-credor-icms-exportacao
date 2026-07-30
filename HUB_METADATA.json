@@ -1,0 +1,115 @@
+{
+  "tool_id": "correcao-saldo-credor-icms-exportacao",
+  "nome": "Correção do Saldo Credor de ICMS proporcional às Exportações",
+  "descricao_curta": "Sobre o último mês de apuração, calcula o percentual do faturamento de exportação em relação ao faturamento total e aplica ao saldo credor de ICMS acumulado. Quando não há oportunidade, explica o motivo.",
+  "area_responsavel": "ICMS/IPI",
+  "grupos": ["ICMS"],
+  "icone": {
+    "tipo": "lucide-svg",
+    "nome": "trending-up",
+    "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline points=\"16 7 22 7 22 13\"/></svg>"
+  },
+  "cores": {
+    "primaria": "#001C26",
+    "secundaria": "#B3BC2B",
+    "destaque": "#4DBDF5"
+  },
+  "integracao": {
+    "tipo": "pagina-interna-hub",
+    "blueprint": "routes:bp",
+    "init": "routes:init_app",
+    "auth_provider": "routes:set_auth_provider",
+    "url_prefix": "/tools/correcao-saldo-credor-icms-exportacao",
+    "screen_root_id": "tool-correcao-saldo-credor-icms",
+    "js_init": "initCorrecaoSaldoCredorIcms",
+    "rotas_do_hub_utilizadas": [
+      "GET /api/cnpj/<cnpj> — consulta da razão social no passo 1 (a ferramenta NÃO faz consulta externa própria)"
+    ]
+  },
+  "permissao": {
+    "modo": "opt-in",
+    "padrao": false,
+    "chave": "correcao_saldo_credor_icms_exportacao",
+    "herda_autenticacao_hub": true
+  },
+  "processamento": {
+    "segundo_plano": true,
+    "endpoint_limites": "/tools/correcao-saldo-credor-icms-exportacao/limites",
+    "endpoint_lote_abrir": "/tools/correcao-saldo-credor-icms-exportacao/lote",
+    "endpoint_lote_arquivo": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/arquivo",
+    "endpoint_lote_iniciar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/iniciar",
+    "endpoint_status": "/tools/correcao-saldo-credor-icms-exportacao/status/{protocolo}",
+    "endpoint_download": "/tools/correcao-saldo-credor-icms-exportacao/download/{token}",
+    "envio_em_lote": true,
+    "download_uso_unico": true,
+    "download_ttl_segundos": 600,
+    "job_ttl_segundos": 3600,
+    "jobs_pesados_simultaneos": 2,
+    "limite_por_requisicao_mb": 200,
+    "limite_lote_mb": 1024,
+    "observacao_envio": "A tela envia UM arquivo por requisicao (POST /lote, N x POST /lote/{protocolo}/arquivo, POST /lote/{protocolo}/iniciar) e acompanha por GET /status com setTimeout recursivo a cada 3s. Um POST unico nao sobrevive ao corte de ~240s da plataforma. Os uploads vao direto para o disco temporario e a area do lote e apagada ao fim do job.",
+    "disco_temporario": "Ate limite_lote_mb por protocolo em tempfile.gettempdir(); apagado no fim do job e no GC por idade (JOB_TTL 1h). Planilha nunca baixada e removida quando o token expira.",
+    "observacao_sem_oportunidade": "Os desfechos 'sem saldo credor' e 'sem exportacao no ultimo mes' sao RESULTADO VALIDO: o job termina 'concluido', /status devolve 200 com o resultado completo e o download do Excel fica disponivel. Somente falha real (arquivo ilegivel, CNPJ raiz divergente, secao ausente) vira status 'erro'."
+  },
+  "variaveis_de_ambiente_novas": [
+    {
+      "nome": "CORRECAO_SALDO_MAX_MB",
+      "default": "200",
+      "obrigatoria": false,
+      "descricao": "Teto de UMA requisicao (um arquivo do lote), em MB. A tela consulta o valor em GET /limites e avisa antes de subir. Acima do teto a resposta e 413 em JSON."
+    },
+    {
+      "nome": "CORRECAO_SALDO_MAX_LOTE_MB",
+      "default": "1024",
+      "obrigatoria": false,
+      "descricao": "Teto do lote inteiro (soma dos arquivos de um protocolo), em MB. Dimensiona o uso de disco temporario por analise."
+    },
+    {
+      "nome": "CORRECAO_SALDO_MAX_JOBS",
+      "default": "2",
+      "obrigatoria": false,
+      "descricao": "Jobs pesados simultaneos (semaforo). Evita que varios lotes ao mesmo tempo estourem a memoria da instancia."
+    }
+  ],
+  "entrada": {
+    "tipos_aceitos": [".csv", ".txt", ".zip"],
+    "upload_multiplo": true,
+    "descricao": "Relatorio de Apuracao de ICMS (ICMSProprio) exportado em CSV, um arquivo por estabelecimento. Le as Secoes 19 (Valor Operacional por CFOP - Saidas), 22 (Abertura Saldo a Transportar por CNPJ), 21 (fallback do CNPJ), 20 (devolucao de exportacao) e 1 (check de integridade). Nao le C100/C170/C190."
+  },
+  "parametros": {
+    "cnpj": {
+      "obrigatorio": true,
+      "descricao": "CNPJ da empresa, consultado na tela antes do upload. A raiz (8 primeiros digitos) e conferida contra a dos arquivos; divergencia aborta a analise."
+    },
+    "razao_social": {
+      "obrigatorio": true,
+      "descricao": "Vem da consulta do HUB e vai para o bloco Empresa do Excel."
+    }
+  },
+  "saida": {
+    "formato": "xlsx",
+    "auditavel": true,
+    "formulas_reais": true,
+    "abas": ["Cálculo", "Série Mensal (conferência)", "Exportações"],
+    "observacao": "Fonte Arial. As celulas de % e de correcao das linhas nao calculadas ficam em branco (nunca 0,00), e o TOTAL usa IF(COUNT(...)=0,\"\",SUM(...)) para nao exibir zero quando nada qualificou."
+  },
+  "validacoes": {
+    "sem_login_proprio": true,
+    "sem_credenciais_hardcoded": true,
+    "sem_caminhos_absolutos": true,
+    "download_expira": true,
+    "download_token_urlsafe_16": true,
+    "paleta_oficial_aplicada": true,
+    "tipografia_oficial": true,
+    "processamento_segundo_plano": true,
+    "metodologia_recolhida": true,
+    "cnpj_primeiro": true,
+    "excel_auditavel": true,
+    "sem_pandas": true
+  },
+  "responsavel": {
+    "nome": "Guilherme",
+    "area": "ICMS/IPI"
+  },
+  "versao": "1.0.0"
+}
