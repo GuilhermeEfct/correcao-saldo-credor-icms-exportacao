@@ -1010,20 +1010,34 @@ def montar_ressalvas(resultado: dict) -> list[tuple[str, str]]:
 
 
 # =============================================================================
-# Excel AUDITÁVEL — 3 abas, fonte Arial, FÓRMULAS REAIS nas células calculadas
+# Excel AUDITÁVEL — 3 abas, tipografia e paleta oficiais, FÓRMULAS REAIS
 #
 # Modo normal (não write_only) de propósito: o bloco de veredito exige célula
 # mesclada com wrap_text, e WriteOnlyWorksheet não tem merge_cells. O volume é
 # limitado — um estabelecimento rende ~65 linhas na aba de conferência —, então
 # não há o problema de memória que obrigou a irmã a usar write_only.
 # =============================================================================
-PETROLEO = "FF001C26"
-OLIVA = "FFB3BC2B"
-CIANO = "FF4DBDF5"
-CREME = "FFFEFEDF"
-TEXTO = "FF111827"
-SECUNDARIO = "FF6B7280"
+# Paleta oficial do Grupo EFCT (seção 4.1 do team-kit). Não há cor fora desta lista
+# na planilha; as descontinuadas (#3B82F6, #1F2937) não aparecem.
+PETROLEO = "FF001C26"        # azul petróleo, cor-mãe
+OLIVA = "FFB3BC2B"           # verde oliva, accent
+CIANO = "FF4DBDF5"           # ciano, info
+CREME = "FFFEFEDF"           # creme, fundos suaves
+TEXTO = "FF111827"           # texto principal
+SECUNDARIO = "FF6B7280"      # texto secundário
+BORDA = "FFE5E7EB"           # borda sutil
 BRANCO = "FFFFFFFF"
+
+# Tipografia oficial (seção 4.2 do team-kit): Bebas Neue nos títulos, Exo 2 no corpo
+# e nos labels, Libre Baskerville Italic no texto de ressalva jurídica.
+#
+# O xlsx não embute fonte: em máquina sem a família instalada o Excel substitui, e o
+# arquivo continua legível. Exo 2 cobre quase toda a planilha; Bebas Neue aparece só
+# no título das abas e no valor do veredito. Os CORPOS seguem a escala de planilha
+# (9-16 pt), não a escala em px da seção 4.2, que é da tela.
+FONTE_TITULO = "Bebas Neue"
+FONTE_CORPO = "Exo 2"
+FONTE_ITALICO = "Libre Baskerville"
 
 # zero renderizado como '—', como manda o padrão de saída
 FMT_BRL = r"#,##0.00;\(#,##0.00\);\—"
@@ -1034,15 +1048,19 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     """Gera o .xlsx. Disponível TAMBÉM quando não houve oportunidade: o relatório
     que documenta a não-aplicabilidade tem valor para o cliente."""
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
     from openpyxl.workbook.properties import CalcProperties
 
-    def fonte(size=9, bold=False, cor=TEXTO):
-        return Font(name="Arial", size=size, bold=bold, color=cor)
+    def fonte(size=9, bold=False, cor=TEXTO, familia=None, italico=False):
+        return Font(name=familia or FONTE_CORPO, size=size, bold=bold, color=cor,
+                    italic=italico)
 
     def fill(cor):
         return PatternFill("solid", fgColor=cor)
+
+    fina = Side(style="thin", color=BORDA)
+    grade = Border(left=fina, right=fina, top=fina, bottom=fina)
 
     esq = Alignment(horizontal="left", vertical="center")
     esq_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
@@ -1050,7 +1068,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     ctr_wrap = Alignment(horizontal="center", vertical="center", wrap_text=True)
     dir_ = Alignment(horizontal="right", vertical="center")
 
-    def por(ws, ref, valor=None, f=None, preenche=None, alinha=None, fmt=None):
+    def por(ws, ref, valor=None, f=None, preenche=None, alinha=None, fmt=None,
+            borda=False):
         """Escreve no canto superior esquerdo, estende o estilo e mescla a faixa."""
         primeira = ref.split(":")[0]
         cel = ws[primeira]
@@ -1062,6 +1081,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
             cel.alignment = alinha
         if fmt:
             cel.number_format = fmt
+        if borda:
+            cel.border = grade
         if ":" in ref:
             if preenche:
                 for linha in ws[ref]:
@@ -1077,6 +1098,13 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     # openpyxl grava a fórmula, não o valor: sem isto o Excel abriria com célula
     # vazia até o usuário forçar o recálculo
     wb.calculation = CalcProperties(fullCalcOnLoad=True)
+    try:
+        # fonte padrão da pasta: célula que eu não estilizar já nasce na tipografia
+        # oficial. É API interna do openpyxl, então falha aqui não pode derrubar a
+        # geração da planilha.
+        wb._named_styles["Normal"].font = Font(name=FONTE_CORPO, size=10, color=TEXTO)
+    except Exception:  # noqa: BLE001
+        pass
 
     # -------------------------------------------------------------- aba Série
     # Escrita antes da aba Cálculo porque as células calculadas da aba principal
@@ -1088,8 +1116,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         ws_serie.column_dimensions[col].width = larg
 
     por(ws_serie, "B2:F2", "SÉRIE MENSAL — MATERIAL DE CONFERÊNCIA",
-        fonte(13, True, BRANCO), PETROLEO, esq)
-    ws_serie.row_dimensions[2].height = 22
+        fonte(15, True, BRANCO, FONTE_TITULO), PETROLEO, esq)
+    ws_serie.row_dimensions[2].height = 24
     por(ws_serie, "B3:F3",
         "Insumos mês a mês. NÃO integra o cálculo — a correção é apurada "
         "exclusivamente sobre o último mês de apuração, destacado em cada bloco.",
@@ -1105,13 +1133,14 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
                                     "% Exportação", "Saldo credor de ICMS"]):
             c = ws_serie.cell(row=r, column=2 + j, value=titulo)
             c.font, c.fill, c.alignment = fonte(9, True, PETROLEO), fill(CREME), ctr_wrap
+            c.border = grade
         r += 1
         primeira_dados = r
         for reg in est["serie"]:
             eh_ref = reg["mes"] == est["mes_ref"]
             rotulo = ("◄ " + reg["mes"]) if eh_ref else reg["mes"]
             destaque = OLIVA if eh_ref else None
-            por(ws_serie, "B%d" % r, rotulo, fonte(9, eh_ref, PETROLEO), destaque, ctr)
+            por(ws_serie, "B%d" % r, rotulo, fonte(9, eh_ref, PETROLEO), destaque, ctr, borda=True)
             por(ws_serie, "C%d" % r, round(reg["faturamento"], 2),
                 fonte(9, eh_ref), destaque, dir_, FMT_BRL)
             por(ws_serie, "D%d" % r, round(reg["exportacao"], 2),
@@ -1152,8 +1181,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         ws.column_dimensions[col].width = larg
 
     por(ws, "B2:K2", "CORREÇÃO DO SALDO CREDOR DE ICMS PROPORCIONAL ÀS EXPORTAÇÕES",
-        fonte(14, True, BRANCO), PETROLEO, esq)
-    ws.row_dimensions[2].height = 25.5
+        fonte(18, True, BRANCO, FONTE_TITULO), PETROLEO, esq)
+    ws.row_dimensions[2].height = 28
 
     identificacao = [
         ("Empresa", resultado["empresa"]["razao_social"] or "—"),
@@ -1176,7 +1205,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     # sem correção calculada: NENHUM valor monetário aqui. Um "R$ 0,00" seria
     # lido como "calculamos e deu zero", que é afirmação diferente e errada.
     por(ws, "B11:D12", round(total, 2) if total is not None else "SEM OPORTUNIDADE",
-        fonte(13, True, BRANCO), PETROLEO, ctr_wrap, FMT_BRL if total is not None else None)
+        fonte(18, True, BRANCO, FONTE_TITULO), PETROLEO, ctr_wrap,
+        FMT_BRL if total is not None else None)
     por(ws, "E11:K12", resultado["explicacao_consolidada"], fonte(10), CREME, esq_wrap)
     ws.row_dimensions[11].height = 30
     ws.row_dimensions[12].height = 30
@@ -1187,6 +1217,7 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     for j, titulo in enumerate(cabecalhos):
         c = ws.cell(row=14, column=2 + j, value=titulo)
         c.font, c.fill, c.alignment = fonte(9, True, BRANCO), fill(PETROLEO), ctr_wrap
+        c.border = grade
     ws.row_dimensions[14].height = 31.5
 
     SERIE = "'Série Mensal (conferência)'"
@@ -1194,28 +1225,30 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     primeira = r
     for est in estabs:
         ref = linha_ref.get(est["cnpj"])
-        por(ws, "B%d" % r, est["cnpj_fmt"], fonte(9, False, TEXTO), None, ctr)
-        por(ws, "C%d" % r, est["uf"], fonte(9), None, ctr)
+        por(ws, "B%d" % r, est["cnpj_fmt"], fonte(9, False, TEXTO), None, ctr, borda=True)
+        por(ws, "C%d" % r, est["uf"], fonte(9), None, ctr, borda=True)
         # o mês de referência é o eixo do cálculo: destacado, como no modelo
-        por(ws, "D%d" % r, est["mes_ref"], fonte(9, True, PETROLEO), None, ctr)
+        por(ws, "D%d" % r, est["mes_ref"], fonte(9, True, PETROLEO), None, ctr, borda=True)
         # os insumos apontam para a linha do mês de referência na aba de
         # conferência — uma só fonte de verdade, conferível clicando na célula
         por(ws, "E%d" % r,
             "=%s!C%d" % (SERIE, ref) if ref else round(est["faturamento"], 2),
-            fonte(9), None, dir_, FMT_BRL)
+            fonte(9), None, dir_, FMT_BRL, borda=True)
         por(ws, "F%d" % r,
             "=%s!D%d" % (SERIE, ref) if ref else round(est["exportacao"], 2),
-            fonte(9), None, dir_, FMT_BRL)
+            fonte(9), None, dir_, FMT_BRL, borda=True)
         por(ws, "G%d" % r,
             '=IF($I{0}<>"Calculado","",IF(E{0}=0,0,F{0}/E{0}))'.format(r),
-            fonte(9, True), None, dir_, FMT_PCT)
+            fonte(9, True), None, dir_, FMT_PCT, borda=True)
         por(ws, "H%d" % r,
             "=%s!F%d" % (SERIE, ref) if ref else round(est["saldo_credor"], 2),
-            fonte(9), None, dir_, FMT_BRL)
-        por(ws, "I%d" % r, est["rotulo_status"], fonte(9, True, SECUNDARIO), None, ctr_wrap)
+            fonte(9), None, dir_, FMT_BRL, borda=True)
+        por(ws, "I%d" % r, est["rotulo_status"], fonte(9, True, SECUNDARIO), None, ctr_wrap,
+            borda=True)
         por(ws, "J%d" % r, '=IF($I{0}<>"Calculado","",H{0}*G{0})'.format(r),
-            fonte(10, True, PETROLEO), None, dir_, FMT_BRL)
-        por(ws, "K%d" % r, est["explicacao"], fonte(9, False, SECUNDARIO), None, esq_wrap)
+            fonte(10, True, PETROLEO), None, dir_, FMT_BRL, borda=True)
+        por(ws, "K%d" % r, est["explicacao"], fonte(9, False, SECUNDARIO), None, esq_wrap,
+            borda=True)
         ws.row_dimensions[r].height = 45.75
         r += 1
     ultima = r - 1
@@ -1239,8 +1272,13 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     por(ws, "B%d:K%d" % (r, r), "RESSALVAS", fonte(10, True, BRANCO), PETROLEO, esq)
     r += 1
     for titulo, texto in montar_ressalvas(resultado):
+        # a nota que distingue saldo a transportar de crédito acumulado é a de peso
+        # jurídico: vai no itálico elegante do padrão (Libre Baskerville Italic)
+        juridica = "Natureza do saldo" in titulo
+        corpo = (fonte(9, False, SECUNDARIO, FONTE_ITALICO, italico=True) if juridica
+                 else fonte(9, False, SECUNDARIO))
         por(ws, "B%d:C%d" % (r, r + 1), titulo, fonte(9, True, PETROLEO), CREME, esq_wrap)
-        por(ws, "D%d:K%d" % (r, r + 1), texto, fonte(9, False, SECUNDARIO), CREME, esq_wrap)
+        por(ws, "D%d:K%d" % (r, r + 1), texto, corpo, CREME, esq_wrap)
         ws.row_dimensions[r].height = 24
         ws.row_dimensions[r + 1].height = 24
         r += 2
@@ -1251,8 +1289,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     for col, larg in zip("ABCDEFG", (2, 20, 11, 8, 34, 17, 11)):
         ws_exp.column_dimensions[col].width = larg
     por(ws_exp, "B2:G2", "OPERAÇÕES DE EXPORTAÇÃO IDENTIFICADAS",
-        fonte(13, True, BRANCO), PETROLEO, esq)
-    ws_exp.row_dimensions[2].height = 22
+        fonte(15, True, BRANCO, FONTE_TITULO), PETROLEO, esq)
+    ws_exp.row_dimensions[2].height = 24
     por(ws_exp, "B3:G3",
         "Prova documental da existência e do volume das exportações no período. "
         "Linhas do último mês de apuração destacadas.",
@@ -1262,16 +1300,17 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
                                 "Valor da operação (R$)", "Tipo"]):
         c = ws_exp.cell(row=5, column=2 + j, value=titulo)
         c.font, c.fill, c.alignment = fonte(9, True, BRANCO), fill(PETROLEO), ctr_wrap
+        c.border = grade
     def linha_operacao(est, op, r):
         eh_ref = op["mes"] == est["mes_ref"]
         destaque = OLIVA if eh_ref else None
-        por(ws_exp, "B%d" % r, est["cnpj_fmt"], fonte(9, eh_ref), destaque, ctr)
-        por(ws_exp, "C%d" % r, op["mes"], fonte(9, eh_ref), destaque, ctr)
-        por(ws_exp, "D%d" % r, op["cfop"], fonte(9, eh_ref), destaque, ctr)
-        por(ws_exp, "E%d" % r, op["descricao"], fonte(9, eh_ref), destaque, esq)
+        por(ws_exp, "B%d" % r, est["cnpj_fmt"], fonte(9, eh_ref), destaque, ctr, borda=True)
+        por(ws_exp, "C%d" % r, op["mes"], fonte(9, eh_ref), destaque, ctr, borda=True)
+        por(ws_exp, "D%d" % r, op["cfop"], fonte(9, eh_ref), destaque, ctr, borda=True)
+        por(ws_exp, "E%d" % r, op["descricao"], fonte(9, eh_ref), destaque, esq, borda=True)
         por(ws_exp, "F%d" % r, round(op["valor"], 2),
             fonte(9, eh_ref), destaque, dir_, FMT_BRL)
-        por(ws_exp, "G%d" % r, op["tipo"], fonte(9, eh_ref), destaque, ctr)
+        por(ws_exp, "G%d" % r, op["tipo"], fonte(9, eh_ref), destaque, ctr, borda=True)
 
     def faixa_total(r, rotulo, formula):
         for j in range(2, 8):

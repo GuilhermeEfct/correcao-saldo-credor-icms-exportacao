@@ -99,7 +99,9 @@
     "auditavel": true,
     "formulas_reais": true,
     "abas": ["Cálculo", "Série Mensal (conferência)", "Exportações"],
-    "observacao": "Fonte Arial. As celulas de % e de correcao das linhas nao calculadas ficam em branco (nunca 0,00), e o TOTAL usa IF(COUNT(...)=0,\"\",SUM(...)) para nao exibir zero quando nada qualificou."
+    "tipografia": "Tipografia oficial (secao 4.2): Bebas Neue nos titulos e no valor do veredito, Exo 2 no corpo/labels/cabecalhos, Libre Baskerville Italic na ressalva de natureza do saldo. O xlsx nao embute fonte: sem as familias instaladas o Excel substitui, e o arquivo segue legivel.",
+    "paleta": "Somente cores da paleta oficial (secao 4.1): #001C26, #B3BC2B, #4DBDF5, #FEFEDF, #111827, #6B7280 e #E5E7EB nas bordas. Nenhuma cor descontinuada.",
+    "observacao": "As celulas de % e de correcao das linhas nao calculadas ficam em branco (nunca 0,00), e o TOTAL usa IF(COUNT(...)=0,\"\",SUM(...)) para nao exibir zero quando nada qualificou."
   },
   "validacoes": {
     "sem_login_proprio": true,

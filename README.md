@@ -266,7 +266,22 @@ outras causas. Daí a necessidade de demonstrar **origem** e **proporção**.
 
 ## Saída — planilha auditável
 
-`.xlsx`, fonte Arial, **fórmulas reais** em toda célula calculada, três abas:
+`.xlsx` com **tipografia e paleta oficiais do Grupo EFCT** (seções 4.1 e 4.2 do
+team-kit) e **fórmulas reais** em toda célula calculada.
+
+- **Bebas Neue** nos títulos das abas e no valor do veredito.
+- **Exo 2** no corpo, nos labels e nos cabeçalhos de coluna — cobre quase toda a planilha.
+- **Libre Baskerville Italic** na ressalva de natureza do saldo, que é a de peso jurídico.
+- Cores **somente** da paleta oficial: petróleo `#001C26`, oliva `#B3BC2B`, ciano
+  `#4DBDF5`, creme `#FEFEDF`, texto `#111827`, texto secundário `#6B7280`, borda sutil
+  `#E5E7EB`. Nenhuma cor descontinuada (`#3B82F6`, `#1F2937`).
+
+> O `.xlsx` não embute fonte: em máquina sem as famílias instaladas o Excel substitui e o
+> arquivo continua legível. Para fidelidade total, instale **Bebas Neue**, **Exo 2** e
+> **Libre Baskerville** (são as mesmas do HUB, gratuitas no Google Fonts). O corpo do
+> texto segue a escala de planilha (9-18 pt), não a escala em px da seção 4.2, que é da tela.
+
+Três abas:
 
 1. **`Cálculo`** — bloco Empresa (razão social + CNPJ formatado), período coberto, mês de
    corte, bloco de veredito com a explicação consolidada em prosa, uma linha por
