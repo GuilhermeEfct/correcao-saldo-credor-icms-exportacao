@@ -242,7 +242,7 @@ def fmt_mes(rotulo: str) -> str:
 
 
 def fmt_cnpj(digitos: str) -> str:
-    """'02602536000102' -> '02.602.536/0001-02'"""
+    """'12345678000190' -> '12.345.678/0001-90'"""
     d = _so_digitos(digitos)
     if len(d) != 14:
         return digitos or ""
