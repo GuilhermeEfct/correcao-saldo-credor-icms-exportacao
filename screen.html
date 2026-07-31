@@ -22,27 +22,9 @@
 
   <main class="cscie-main">
 
-    <!-- Passo 1: empresa -->
+    <!-- Passo 1: arquivos -->
     <section class="cscie-card">
       <span class="cscie-step">1</span>
-      <h2 class="cscie-card-title">Empresa</h2>
-      <div class="cscie-field-row">
-        <div class="cscie-field cscie-field-sm">
-          <label for="cscieCnpj">CNPJ</label>
-          <input id="cscieCnpj" type="text" inputmode="numeric" autocomplete="off"
-                 maxlength="18" placeholder="00.000.000/0000-00">
-        </div>
-        <div class="cscie-field">
-          <label for="cscieRazao">Razão social</label>
-          <output id="cscieRazao" class="cscie-razao">—</output>
-        </div>
-      </div>
-      <p id="cscieCnpjMsg" class="cscie-hint" hidden></p>
-    </section>
-
-    <!-- Passo 2: arquivos -->
-    <section class="cscie-card">
-      <span class="cscie-step">2</span>
       <h2 class="cscie-card-title">Relatórios de Apuração de ICMS</h2>
       <p class="cscie-hint">
         Um arquivo por estabelecimento — relatório <code>ICMSProprio</code> exportado em
@@ -53,6 +35,29 @@
         <span class="cscie-dropzone-text">Clique para escolher ou arraste os arquivos aqui</span>
         <span id="cscieLista" class="cscie-lista"></span>
       </label>
+    </section>
+
+    <!-- Passo 2: empresa — preenchida pela própria ferramenta a partir dos
+         relatórios; o campo existe para o analista sobrescrever quando quiser -->
+    <section class="cscie-card">
+      <span class="cscie-step">2</span>
+      <h2 class="cscie-card-title">Empresa</h2>
+      <p class="cscie-hint">
+        A ferramenta identifica a empresa nos relatórios enviados — a matriz representa a
+        empresa aqui. Preencha o CNPJ só se quiser sobrescrever a identificação.
+      </p>
+      <div class="cscie-field-row">
+        <div class="cscie-field cscie-field-sm">
+          <label for="cscieCnpj">CNPJ</label>
+          <input id="cscieCnpj" type="text" inputmode="numeric" autocomplete="off"
+                 maxlength="18" placeholder="identificado nos relatórios">
+        </div>
+        <div class="cscie-field">
+          <label for="cscieRazao">Razão social</label>
+          <output id="cscieRazao" class="cscie-razao">—</output>
+        </div>
+      </div>
+      <p id="cscieCnpjMsg" class="cscie-hint cscie-identificacao" hidden></p>
     </section>
 
     <!-- Passo 3: metodologia (accordion FECHADO) + ação -->
@@ -97,7 +102,7 @@
       <button id="cscieBtnCalcular" type="button" class="cscie-btn cscie-btn-primary" disabled>
         Calcular
       </button>
-      <p id="cscieBtnAviso" class="cscie-nota">Consulte o CNPJ e envie os relatórios para habilitar o cálculo.</p>
+      <p id="cscieBtnAviso" class="cscie-nota">Envie os relatórios para habilitar o cálculo.</p>
     </section>
 
     <!-- Progresso -->

@@ -94,6 +94,32 @@ o mês dele.
 
 ---
 
+## Identificação da empresa — e uma divergência consciente do team-kit
+
+A empresa **não é digitada**: o CNPJ está dentro dos próprios relatórios (as Seções
+21/22/23 trazem `<14 dígitos> - <UF>`), então a ferramenta identifica todos os
+estabelecimentos enviados e promove a **matriz** (ordem `0001`) ao bloco Empresa, no topo.
+Sem matriz no lote, vale o estabelecimento de menor ordem presente — a razão social é a
+mesma, e é melhor identificar pelo que existe do que construir um CNPJ que não veio em
+arquivo nenhum. Com a matriz em mãos, a razão social vem de `GET /api/cnpj/<cnpj>` do HUB.
+
+O campo CNPJ continua na tela, **editável**, para o analista sobrescrever a identificação
+quando quiser; deixado vazio, quem decide são os arquivos.
+
+> ⚠ **Divergência do padrão de produto (§4.4 do team-kit), a pedido da área.** A regra diz
+> que a tela começa pelo CNPJ e que *"o botão principal só habilita após o CNPJ ser
+> consultado com sucesso"*. Aqui o botão habilita com os **relatórios** presentes, e o CNPJ
+> aparece preenchido durante a execução, antes de qualquer resultado. Motivo: o dado já
+> está no arquivo, e exigir digitação era retrabalho puro.
+>
+> **A proteção que a regra original dava foi preservada.** O risco real era a planilha sair
+> com a razão social de uma empresa e o saldo credor de outra — erro que não quebra nada,
+> só mente, num documento que pode virar anexo processual. Continua coberto em dois
+> pontos: (a) relatórios de **raízes de CNPJ diferentes** no mesmo lote abortam a análise
+> com mensagem explícita, na identificação e de novo no processamento; (b) quando o
+> analista digita um CNPJ, a validação da seção 3.6a confere cada arquivo contra ele, como
+> antes. CNPJ + razão social continuam viajando no FormData e sendo gravados no Excel.
+
 ## Decisões técnicas não-óbvias
 
 - **Leitura em fluxo**, reaproveitada da ferramenta-irmã `credito-icms-uso-consumo-exportacao`
@@ -127,11 +153,18 @@ o mês dele.
   piso, um retorno maior que a exportação do mês produziria exportação negativa e
   percentual negativo na aba de conferência. Quando o piso é acionado, a aba `Exportações`
   registra em qual mês e estabelecimento.
+- **A identificação da empresa é uma passada leve e separada** (`identificar_estabelecimentos`),
+  que para no primeiro CNPJ de cada arquivo em vez de montar a série inteira. Ela roda
+  entre o upload e o cálculo, sobre os arquivos **já enviados** — o analista não sobe nada
+  duas vezes.
+- **O backend não depende da tela para produzir planilha identificada.** Se `iniciar` chegar
+  sem CNPJ, ele mesmo identifica a matriz nos arquivos. A precedência é: o que a tela
+  confirmou > o que abriu o lote > o identificado nos relatórios.
 - **Processamento assíncrono** desde o nascimento: o Render corta requisição em ~240 s, e
   aumentar o `--timeout` do gunicorn não resolve. `POST /lote` → N × `POST /lote/{p}/arquivo`
-  → `POST /lote/{p}/iniciar` (202) → `GET /status/{p}` a cada 3 s → `GET /download/{token}`.
-  Os arquivos aqui são pequenos, mas o cliente pode subir um `.zip` grande ou muitos
-  estabelecimentos.
+  → `POST /lote/{p}/identificar` → `POST /lote/{p}/iniciar` (202) → `GET /status/{p}` a cada
+  3 s → `GET /download/{token}`. Os arquivos aqui são pequenos, mas o cliente pode subir um
+  `.zip` grande ou muitos estabelecimentos.
 
 ---
 
@@ -238,7 +271,9 @@ python test_app.py
 "CNPJ primeiro" poder ser exercitado offline. Nem `test_app.py` nem `test_regressao.py`
 vão para o HUB.
 
-Teste com a pasta `fixtures/` (CNPJ `12.345.678/0001-90`, qualquer razão social):
+Teste com a pasta `fixtures/` — **sem digitar nada**: escolha os 4 arquivos e clique em
+Calcular. A ferramenta identifica a matriz `12.345.678/0001-90` e os quatro
+estabelecimentos:
 
 | Arquivo | Estabelecimento | Último mês | Desfecho esperado |
 |---|---|---|---|

@@ -122,6 +122,11 @@
 #tool-correcao-saldo-credor-icms .cscie-razao-vazia {
   font-weight: 400; color: var(--efct-cinza);
 }
+#tool-correcao-saldo-credor-icms .cscie-identificacao {
+  margin: 12px 0 0; padding: 8px 12px; border-radius: 8px;
+  background: var(--efct-creme); border-left: 3px solid var(--efct-oliva);
+  color: #45555c;
+}
 
 /* ---------- Botões ---------- */
 #tool-correcao-saldo-credor-icms .cscie-btn {
@@ -311,6 +316,13 @@
 #tool-correcao-saldo-credor-icms .cscie-motivo td {
   background: #f7fbfd; text-align: left; font-size: 13px; line-height: 1.5;
   color: #45555c; padding: 12px 14px;
+}
+/* acompanha a rolagem horizontal da tabela: a explicação é o que o revisor precisa
+   ler, e não pode ficar escondida fora da área visível */
+/* medida definida (ch/vw): dentro de célula de tabela o `100%` resolveria para
+   zero, e o texto voltaria a escapar da área visível */
+#tool-correcao-saldo-credor-icms .cscie-motivo td > div {
+  position: sticky; left: 14px; width: min(88ch, calc(100vw - 120px));
 }
 #tool-correcao-saldo-credor-icms .cscie-linha-ref td {
   background: var(--efct-creme); font-weight: 700;

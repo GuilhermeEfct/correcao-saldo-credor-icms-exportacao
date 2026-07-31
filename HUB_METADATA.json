@@ -37,6 +37,7 @@
     "endpoint_limites": "/tools/correcao-saldo-credor-icms-exportacao/limites",
     "endpoint_lote_abrir": "/tools/correcao-saldo-credor-icms-exportacao/lote",
     "endpoint_lote_arquivo": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/arquivo",
+    "endpoint_lote_identificar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/identificar",
     "endpoint_lote_iniciar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/iniciar",
     "endpoint_status": "/tools/correcao-saldo-credor-icms-exportacao/status/{protocolo}",
     "endpoint_download": "/tools/correcao-saldo-credor-icms-exportacao/download/{token}",
@@ -78,14 +79,15 @@
   },
   "parametros": {
     "cnpj": {
-      "obrigatorio": true,
-      "descricao": "CNPJ da empresa, consultado na tela antes do upload. A raiz (8 primeiros digitos) e conferida contra a dos arquivos; divergencia aborta a analise."
+      "obrigatorio": false,
+      "descricao": "OPCIONAL. Por padrao a ferramenta identifica a empresa nos proprios relatorios (Secoes 21/22/23 trazem '<14 digitos> - <UF>') e promove a matriz (ordem 0001) ao bloco Empresa. O campo existe para o analista sobrescrever a identificacao; quando preenchido, a raiz e conferida contra a dos arquivos e divergencia aborta a analise."
     },
     "razao_social": {
-      "obrigatorio": true,
-      "descricao": "Vem da consulta do HUB e vai para o bloco Empresa do Excel."
+      "obrigatorio": false,
+      "descricao": "Obtida em GET /api/cnpj/<cnpj> do HUB a partir do CNPJ identificado. Vai para o bloco Empresa do Excel. Se a consulta falhar, o calculo segue e a planilha marca a razao social como nao informada."
     }
   },
+  "observacao_padrao_produto": "DIVERGENCIA CONSCIENTE do item 'CNPJ primeiro' (secao 4.4 do team-kit), pedida pela area: o botao principal habilita com os RELATORIOS presentes, nao apos a consulta do CNPJ, porque o CNPJ ja esta dentro do arquivo e exigir digitacao era retrabalho. A protecao original foi preservada: relatorios de raizes de CNPJ diferentes no mesmo lote abortam a analise (na identificacao e de novo no processamento), e CNPJ + razao social continuam viajando no FormData e sendo gravados no Excel. Detalhes no README, secao 'Identificacao da empresa'.",
   "saida": {
     "formato": "xlsx",
     "auditavel": true,

@@ -185,6 +185,11 @@ RESSALVA_DEVOLUCAO = (
     "Quando o valor devolvido supera a exportação do próprio mês, o resultado é limitado "
     "a zero — nunca a um valor negativo."
 )
+MSG_RAIZES_DIFERENTES = (
+    "Os relatórios enviados pertencem a empresas diferentes (raízes de CNPJ {raizes}). "
+    "Cada análise trata de uma empresa: envie os relatórios de uma raiz por vez."
+)
+
 RESSALVA_ORIGEM = (
     "Seções 19 (Valor Operacional por CFOP - Saídas/Prestações) e 22 (Abertura Saldo a "
     "Transportar por CNPJ) do relatório de apuração de ICMS, correspondentes aos "
@@ -684,7 +689,11 @@ def validar_cnpj_raiz(estabs: list[dict], cnpj_tela: str, razao_social: str) -> 
     """
     raiz_tela = _so_digitos(cnpj_tela)[:8]
     if len(raiz_tela) != 8:
-        raise ErroDeNegocio("Informe o CNPJ da empresa antes de calcular.")
+        # cobre os dois caminhos: identificação automática que não achou o CNPJ nos
+        # arquivos, e analista que digitou algo incompleto
+        raise ErroDeNegocio(
+            "Não foi possível identificar o CNPJ da empresa nos relatórios enviados. "
+            "Informe o CNPJ no campo da tela e calcule novamente.")
     for e in estabs:
         raiz = _so_digitos(e["cnpj"])[:8]
         if raiz and raiz != raiz_tela:
@@ -716,6 +725,79 @@ def conferir_secao1_x_secao19(ap: dict, tolerancia: float = 0.01) -> list[str]:
                 "pode estar truncado. Confira a exportação do relatório antes de usar o "
                 "resultado." % (ap["arquivo"] or "enviado", fmt_brl(dif), fmt_mes(mes)))
     return avisos
+
+
+# =============================================================================
+# Identificação da empresa a partir dos próprios relatórios
+#
+# O CNPJ está dentro do arquivo (Seções 21/22/23 trazem "<14 dígitos> - <UF>"),
+# então o analista não precisa digitá-lo. Esta passada é leve e para no primeiro
+# acerto de cada arquivo — não monta série nem soma CFOP.
+# =============================================================================
+_RE_CNPJ_LINHA = re.compile(r"^(\d{14})\s*-\s*([A-Za-z]{2})?")
+
+
+def escolher_matriz(estabs: list[dict]):
+    """A matriz (ordem 0001) representa a empresa no topo da tela e no Excel.
+
+    Sem a matriz no lote, vale o estabelecimento de menor ordem presente — a razão
+    social é a mesma, e é melhor identificar pelo que existe do que construir um
+    CNPJ que não veio em arquivo nenhum.
+    """
+    if not estabs:
+        return None
+    matriz = [e for e in estabs if e["cnpj"][8:12] == "0001"]
+    if matriz:
+        return matriz[0]
+    return sorted(estabs, key=lambda e: e["cnpj"][8:12])[0]
+
+
+def identificar_estabelecimentos(arquivos, progress=None) -> dict:
+    """Descobre de que estabelecimentos são os relatórios, sem processá-los."""
+    def _p(pct, msg):
+        if progress:
+            progress(int(pct), msg)
+
+    partes = listar_partes(arquivos)
+    total = len(partes) or 1
+    achados: list[dict] = []
+    vistos: set[str] = set()
+    nao_reconhecidos: list[str] = []
+
+    for i, parte in enumerate(partes, start=1):
+        with abrir_linhas(parte) as fluxo:
+            amostra = list(itertools.islice(fluxo, 40))
+            if not eh_relatorio_apuracao(parte.nome, amostra):
+                nao_reconhecidos.append(os.path.basename(parte.nome))
+            else:
+                cnpj = uf = ""
+                for bruta in itertools.chain(amostra, fluxo):
+                    m = _RE_CNPJ_LINHA.match(_clean(bruta.split(";")[0]))
+                    if m:
+                        cnpj, uf = m.group(1), (m.group(2) or "").upper()
+                        break               # achou: não precisa ler o resto
+                if not cnpj:
+                    nao_reconhecidos.append(os.path.basename(parte.nome))
+                elif cnpj not in vistos:    # mesma regra do processamento:
+                    vistos.add(cnpj)        # duplicado é descartado, não somado
+                    achados.append({"arquivo": os.path.basename(parte.nome),
+                                    "cnpj": cnpj, "cnpj_fmt": fmt_cnpj(cnpj), "uf": uf})
+        _p(60 * i / total, "Identificando a empresa… (%d/%d)" % (i, total))
+
+    achados.sort(key=lambda e: e["cnpj"])
+    raizes = sorted({e["cnpj"][:8] for e in achados})
+    matriz = escolher_matriz(achados)
+    erro = None
+    if len(raizes) > 1:
+        erro = MSG_RAIZES_DIFERENTES.format(
+            raizes=", ".join(fmt_cnpj(r + "000000")[:10] for r in raizes))
+    return {
+        "estabelecimentos": achados,
+        "matriz": matriz,
+        "raizes": raizes,
+        "erro": erro,
+        "nao_reconhecidos": nao_reconhecidos,
+    }
 
 
 # =============================================================================

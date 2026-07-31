@@ -204,14 +204,17 @@ def limites():
 @bp.route("/lote", methods=["POST"])
 @requer_permissao
 def lote_abrir():
-    """Abre um protocolo e guarda CNPJ + razão social. Nenhum arquivo ainda."""
+    """Abre um protocolo. CNPJ e razão social são OPCIONAIS aqui: o padrão é a
+    ferramenta identificar a empresa nos próprios relatórios (POST /identificar),
+    e o analista só digita quando quiser sobrescrever."""
     _limpar_expirados()
     cnpj = re.sub(r"\D", "", request.form.get("cnpj", "") or "")
     razao_social = (request.form.get("razao_social", "") or "").strip()
-    if len(cnpj) != 14:
+    if cnpj and len(cnpj) != 14:
         return jsonify({"ok": False,
-                        "erro": "Informe e consulte o CNPJ da empresa antes de "
-                                "calcular."}), 400
+                        "erro": "O CNPJ informado não tem 14 dígitos. Deixe o campo "
+                                "vazio para a ferramenta identificar a empresa nos "
+                                "relatórios."}), 400
 
     protocolo = uuid.uuid4().hex[:12]
     os.makedirs(_dir_lote(protocolo), exist_ok=True)
@@ -282,10 +285,14 @@ def lote_arquivo(protocolo):
     return jsonify({"ok": True, "recebidos": recebidos, "bytes": total_bytes})
 
 
-@bp.route("/lote/<protocolo>/iniciar", methods=["POST"])
+@bp.route("/lote/<protocolo>/identificar", methods=["POST"])
 @requer_permissao
-def lote_iniciar(protocolo):
-    """Fecha o lote e dispara o processamento em segundo plano."""
+def lote_identificar(protocolo):
+    """De quem são os relatórios já enviados — sem processá-los.
+
+    A tela chama isto entre o upload e o início do cálculo para preencher a
+    identificação da empresa (CNPJ da matriz + razão social) sem digitação.
+    """
     with _LOCK:
         job = _job_do_usuario(protocolo)
         if not job:
@@ -297,9 +304,73 @@ def lote_iniciar(protocolo):
             return jsonify({"ok": False,
                             "erro": "Nenhum arquivo recebido neste lote."}), 400
         caminhos = list(job["arquivos"])
-        cnpj, razao_social = job["cnpj"], job["razao_social"]
-        job.update(status="processando", pct=0, msg="Na fila…",
-                   ts=time.time(), iniciado_at=time.time())
+
+    try:
+        info = logica.identificar_estabelecimentos(caminhos)
+    except logica.ErroDeNegocio as erro:
+        return jsonify({"ok": False, "erro": str(erro)}), 400
+    except Exception:                       # noqa: BLE001
+        log.exception("Falha ao identificar a empresa (protocolo %s)", protocolo)
+        return jsonify({"ok": False,
+                        "erro": "Não foi possível ler os relatórios enviados. Confira "
+                                "se são os relatórios de Apuração de ICMS."}), 500
+
+    if not info["estabelecimentos"]:
+        return jsonify({"ok": False,
+                        "erro": "Nenhum relatório de Apuração de ICMS (ICMSProprio) foi "
+                                "reconhecido nos arquivos enviados."}), 400
+
+    with _LOCK:
+        job = _job_do_usuario(protocolo)
+        if job:
+            job["identificado"] = info["matriz"]
+            job["ts"] = time.time()
+
+    return jsonify({"ok": True, "matriz": info["matriz"],
+                    "estabelecimentos": info["estabelecimentos"],
+                    "raizes": info["raizes"], "erro_raizes": info["erro"],
+                    "nao_reconhecidos": [re.sub(r"^\d{3}_", "", n)
+                                         for n in info["nao_reconhecidos"]]})
+
+
+@bp.route("/lote/<protocolo>/iniciar", methods=["POST"])
+@requer_permissao
+def lote_iniciar(protocolo):
+    """Fecha o lote e dispara o processamento em segundo plano."""
+    cnpj_form = re.sub(r"\D", "", request.form.get("cnpj", "") or "")
+    razao_form = (request.form.get("razao_social", "") or "").strip()
+
+    with _LOCK:
+        job = _job_do_usuario(protocolo)
+        if not job:
+            return jsonify({"ok": False,
+                            "erro": "Protocolo não encontrado ou expirado."}), 404
+        if job["status"] != "recebendo":
+            return jsonify({"ok": False, "erro": "Este lote já foi iniciado."}), 409
+        if not job["arquivos"]:
+            return jsonify({"ok": False,
+                            "erro": "Nenhum arquivo recebido neste lote."}), 400
+        caminhos = list(job["arquivos"])
+        identificado = job.get("identificado") or {}
+        # precedência: o que a tela confirmou > o que abriu o lote > o identificado
+        # nos arquivos. O último garante que o backend não depende da tela para
+        # produzir uma planilha identificada.
+        cnpj = cnpj_form or job["cnpj"] or identificado.get("cnpj", "")
+        razao_social = razao_form or job["razao_social"]
+        job.update(cnpj=cnpj, razao_social=razao_social, status="processando", pct=0,
+                   msg="Na fila…", ts=time.time(), iniciado_at=time.time())
+
+    if len(cnpj) != 14:
+        try:
+            info = logica.identificar_estabelecimentos(caminhos)
+        except Exception:                   # noqa: BLE001
+            info = {"matriz": None}
+        matriz = info.get("matriz") or {}
+        cnpj = matriz.get("cnpj", "")
+        with _LOCK:
+            job = _JOBS.get(protocolo)
+            if job:
+                job["cnpj"] = cnpj
 
     threading.Thread(target=_rodar_job,
                      args=(protocolo, caminhos, cnpj, razao_social),
