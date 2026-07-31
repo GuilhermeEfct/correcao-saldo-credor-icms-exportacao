@@ -159,6 +159,12 @@ RESSALVA_MES = (
     "estabelecimento, sem retrocesso na série histórica. O mês utilizado consta na "
     'coluna "Último mês de apuração".'
 )
+RESSALVA_JANELA = (
+    "A análise abrange os últimos {limite} meses contados do mês de corte da extração "
+    "({corte}), prazo dentro do qual a recuperação de crédito não está prescrita. Meses "
+    "anteriores foram omitidos de todo o relatório — inclusive da série de conferência e "
+    "das operações de exportação —, e não integram nenhum total apresentado."
+)
 RESSALVA_NATUREZA_SALDO = (
     "O valor utilizado é o saldo credor a transportar apurado no registro E110 "
     "(VL_SLD_CREDOR_TRANSPORTAR), que corresponde ao saldo da apuração ordinária. Não "
@@ -205,6 +211,14 @@ MESES_PTBR = {m: i for i, m in enumerate(
     ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN",
      "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"], start=1)}
 
+# JANELA DE ANÁLISE — 60 meses contados do mês de corte da extração.
+#
+# É o prazo dentro do qual a recuperação de crédito não está prescrita. Mês fora da
+# janela NÃO APARECE em lugar nenhum: nem na série de conferência, nem na aba de
+# exportações, nem na contagem do período. Não é "marcar em amarelo" — é omitir,
+# porque dado prescrito exibido ao lado do apurável convida a somar os dois.
+MESES_ANALISE = 60
+
 _RE_MES = re.compile(r"^([A-Z]{3})/(\d{4})$")
 _RE_SECAO = re.compile(r"^ICMSProprio\s*-\s*(\d+)\s*[.\-]")
 _RE_CFOP = re.compile(r"^(\d{4})\s*-\s*(.*)$")
@@ -246,6 +260,45 @@ def chave_mes(rotulo: str):
 def eh_rotulo_mes(texto: str) -> bool:
     m = _RE_MES.match(fmt_mes(texto))
     return bool(m and m.group(1) in MESES_PTBR)
+
+
+def _indice_calendario(rotulo: str) -> int:
+    ano, mes = chave_mes(rotulo)
+    return ano * 12 + mes
+
+
+def aviso_extracao_antiga(mes_corte: str, hoje=None, limite: int = MESES_ANALISE):
+    """Avisa quando a extração é velha — e NÃO mexe em número nenhum.
+
+    A janela é sempre contada do mês de corte, nunca da data de hoje: só assim o
+    mesmo arquivo produz o mesmo relatório daqui a um ano, o que um documento
+    auditável exige. O efeito colateral é que um SPED antigo passaria como se nada
+    estivesse prescrito — daí o aviso, que é onde a data de hoje entra.
+    """
+    from datetime import date
+    hoje = hoje or date.today()
+    atraso = (hoje.year * 12 + hoje.month) - _indice_calendario(mes_corte)
+    if atraso <= 12:
+        return None
+    return ("O mês de corte da extração é %s, há %d meses. A janela de %d meses é contada "
+            "desse mês, então confira se o SPED está atualizado: com extração antiga, "
+            "parte do período analisado pode já estar prescrita hoje."
+            % (fmt_mes(mes_corte), atraso, limite))
+
+
+def meses_da_janela(rotulos, limite: int = MESES_ANALISE) -> set:
+    """Os `limite` meses NÃO PRESCRITOS, ancorados no mês mais recente do lote.
+
+    A conta é de CALENDÁRIO, não de colunas presentes: se a série tiver buraco, pegar
+    "as últimas 60 colunas" alcançaria mês já prescrito. A prescrição é fato do
+    calendário. A âncora é o mês de corte da extração — a mesma para todos os
+    estabelecimentos, porque o prazo não corre por inscrição estadual.
+    """
+    presentes = sorted({fmt_mes(m) for m in rotulos if eh_rotulo_mes(m)}, key=chave_mes)
+    if not presentes:
+        return set()
+    corte = _indice_calendario(presentes[-1]) - (limite - 1)
+    return {m for m in presentes if _indice_calendario(m) >= corte}
 
 
 def _conc(n: int, singular: str, plural: str) -> str:
@@ -551,19 +604,24 @@ def mes_referencia(ap: dict) -> str:
 
 
 def _linhas_exportacao(ap: dict, serie: list[dict]) -> list[dict]:
-    """Uma linha por (CFOP de exportação × mês) com valor — prova documental."""
+    """Uma linha por (CFOP de exportação × mês) com valor — prova documental.
+
+    Restrita aos meses da série, isto é, à janela não prescrita: operação de mês
+    prescrito não entra nem como prova.
+    """
+    na_janela = {r["mes"] for r in serie}
     linhas = []
     for cfop, por_mes in ap["cfops_saida"].items():
         if not eh_export(cfop):
             continue
         tipo = "Direta" if eh_export_direta(cfop) else "Indireta"
         for mes, valor in por_mes.items():
-            if valor:
+            if valor and mes in na_janela:
                 linhas.append({"mes": mes, "cfop": cfop, "valor": valor, "tipo": tipo,
                                "descricao": ap["descricao_cfop"].get(cfop, "")})
     for cfop, por_mes in ap["devolucao_export"].items():
         for mes, valor in por_mes.items():
-            if valor:
+            if valor and mes in na_janela:
                 linhas.append({"mes": mes, "cfop": cfop, "valor": -valor,
                                "tipo": "Devolução de exportação",
                                "descricao": ap["descricao_cfop"].get(cfop, "")})
@@ -642,8 +700,11 @@ def avaliar_estabelecimento(ap: dict) -> dict:
         "exportacoes": exportacoes,
         "ultimo_mes_com_saldo": ({"mes": fmt_mes(contexto_saldo[0]),
                                   "valor": contexto_saldo[1]} if contexto_saldo else None),
-        "tem_export_indireta": any(c in CFOP_EXPORT_INDIRETA for c in ap["cfops_saida"]),
-        "cfops_devolucao": sorted(ap["devolucao_export"]),
+        # derivadas das operações da JANELA, não das chaves do arquivo: ressalva sobre
+        # operação prescrita seria nota a respeito de dado que o relatório não mostra
+        "tem_export_indireta": any(o["tipo"] == "Indireta" for o in exportacoes),
+        "cfops_devolucao": sorted({o["cfop"] for o in exportacoes
+                                   if o["tipo"] == "Devolução de exportação"}),
         "meses_limitados": [r["mes"] for r in serie if r["exportacao_limitada"]],
         "primeiro_mes": fmt_mes(serie[0]["mes"]),
     }
@@ -854,6 +915,24 @@ def processar_saldo_credor(arquivos, cnpj: str, razao_social: str,
             "arquivos enviados. Envie o relatório exportado em CSV, um por "
             "estabelecimento — pode ser em .zip.")
 
+    # Janela não prescrita: recorta a série ANTES de avaliar, para que mês prescrito
+    # não apareça em canto nenhum do resultado.
+    janela = meses_da_janela([m for ap in apuracoes for m in ap["meses"]])
+    fora_da_janela = []
+    for ap in apuracoes:
+        ap["meses"] = [m for m in ap["meses"] if fmt_mes(m) in janela]
+    for ap in [a for a in apuracoes if not a["meses"]]:
+        fora_da_janela.append(ap)
+        avisos.append(
+            "O estabelecimento %s não tem escrituração nos últimos %d meses e ficou fora "
+            "da análise — o período dele já está prescrito para recuperação de crédito."
+            % (fmt_cnpj(ap["cnpj"]), MESES_ANALISE))
+    apuracoes = [ap for ap in apuracoes if ap["meses"]]
+    if not apuracoes:
+        raise ErroDeNegocio(
+            "Nenhum dos relatórios enviados tem escrituração nos últimos %d meses, que é "
+            "o prazo não prescrito para recuperação de crédito." % MESES_ANALISE)
+
     _p(70, "Conferindo a consistência dos arquivos…")
     estabs = [avaliar_estabelecimento(ap) for ap in apuracoes]
     estabs.sort(key=lambda e: e["cnpj"])
@@ -865,8 +944,14 @@ def processar_saldo_credor(arquivos, cnpj: str, razao_social: str,
     calculados = [e for e in estabs if e["status"] == STATUS_CALCULADO]
     total = sum(e["correcao"] for e in calculados)
 
+    # o intervalo exibido reflete SOMENTE o que entrou na análise
     todos_meses = sorted({r["mes"] for e in estabs for r in e["serie"]}, key=chave_mes)
-    periodo = "%s a %s" % (todos_meses[0], todos_meses[-1]) if todos_meses else ""
+    periodo = ("%s a %s (%d meses)" % (todos_meses[0], todos_meses[-1], len(todos_meses))
+               if todos_meses else "")
+    if todos_meses:
+        velho = aviso_extracao_antiga(todos_meses[-1])
+        if velho:
+            avisos.insert(0, velho)
     cfops_devolucao = sorted({c for e in estabs for c in e["cfops_devolucao"]})
 
     _p(100, "Concluído.")
@@ -907,6 +992,8 @@ def montar_ressalvas(resultado: dict) -> list[tuple[str, str]]:
     """
     notas = [
         ("Critério do mês de referência", RESSALVA_MES),
+        ("Período analisado", RESSALVA_JANELA.format(
+            limite=MESES_ANALISE, corte=resultado["periodo"]["ultimo"] or "não identificado")),
         ("Natureza do saldo utilizado", RESSALVA_NATUREZA_SALDO),
         ("Composição do faturamento total", RESSALVA_FATURAMENTO),
     ]
@@ -1005,7 +1092,7 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     ws_serie.row_dimensions[2].height = 22
     por(ws_serie, "B3:F3",
         "Insumos mês a mês. NÃO integra o cálculo — a correção é apurada "
-        "exclusivamente sobre o último mês de apuração de cada estabelecimento.",
+        "exclusivamente sobre o último mês de apuração, destacado em cada bloco.",
         fonte(9, False, SECUNDARIO), None, esq)
 
     linha_ref: dict[str, int] = {}       # cnpj -> linha do mês de referência
@@ -1023,7 +1110,7 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         for reg in est["serie"]:
             eh_ref = reg["mes"] == est["mes_ref"]
             rotulo = ("◄ " + reg["mes"]) if eh_ref else reg["mes"]
-            destaque = CREME if eh_ref else None
+            destaque = OLIVA if eh_ref else None
             por(ws_serie, "B%d" % r, rotulo, fonte(9, eh_ref, PETROLEO), destaque, ctr)
             por(ws_serie, "C%d" % r, round(reg["faturamento"], 2),
                 fonte(9, eh_ref), destaque, dir_, FMT_BRL)
@@ -1039,24 +1126,29 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
                 linha_ref[est["cnpj"]] = r
             r += 1
         ultima_dados = r - 1
-        por(ws_serie, "B%d" % r, "Total do período", fonte(9, True, PETROLEO), None, ctr)
+        por(ws_serie, "B%d" % r, "Total do período", fonte(9, True, PETROLEO), None, dir_)
         por(ws_serie, "C%d" % r, "=SUM(C%d:C%d)" % (primeira_dados, ultima_dados),
-            fonte(9, True), None, dir_, FMT_BRL)
+            fonte(9, True, PETROLEO), None, dir_, FMT_BRL)
         por(ws_serie, "D%d" % r, "=SUM(D%d:D%d)" % (primeira_dados, ultima_dados),
-            fonte(9, True), None, dir_, FMT_BRL)
+            fonte(9, True, PETROLEO), None, dir_, FMT_BRL)
         # saldo credor é ESTOQUE: somar meses não significaria nada
         por(ws_serie, "F%d" % r, "—", fonte(9, False, SECUNDARIO), None, dir_)
         r += 3
     por(ws_serie, "B%d:F%d" % (r, r),
-        "Célula de saldo credor vazia indica mês sem escrituração do estabelecimento. "
-        "A linha marcada com ◄ é o mês de referência do cálculo.",
+        "Célula de saldo credor vazia indica mês sem escrituração do estabelecimento "
+        "(não é zero). O total do período não se aplica ao saldo credor, por ser "
+        "grandeza de estoque e não de fluxo.",
         fonte(9, False, SECUNDARIO), None, esq)
 
     # ------------------------------------------------------------ aba Cálculo
     ws = wb.create_sheet("Cálculo", 0)
     ws.sheet_view.showGridLines = False
+    # B com 28: os rótulos da identificação ("Estabelecimentos analisados", "Mês de
+    # corte da extração") ficavam CORTADOS em 20, porque a célula ao lado tem valor e
+    # não deixa o texto transbordar. Documento que pode virar anexo processual não
+    # pode sair com rótulo truncado.
     for col, larg in zip("ABCDEFGHIJK",
-                         (2, 20, 6, 14, 17, 17, 12, 17, 26, 17, 95)):
+                         (2, 28, 6, 14, 17, 17, 12, 17, 26, 17, 95)):
         ws.column_dimensions[col].width = larg
 
     por(ws, "B2:K2", "CORREÇÃO DO SALDO CREDOR DE ICMS PROPORCIONAL ÀS EXPORTAÇÕES",
@@ -1067,7 +1159,9 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         ("Empresa", resultado["empresa"]["razao_social"] or "—"),
         ("CNPJ", resultado["empresa"]["cnpj_fmt"]),
         ("Estabelecimentos analisados", len(estabs)),
-        ("Período coberto", resultado["periodo"]["coberto"] or "—"),
+        # "analisado", não "coberto": os arquivos podem trazer mais meses do que a
+        # janela não prescrita, e o que vale para o leitor é o que entrou na conta
+        ("Período analisado", resultado["periodo"]["coberto"] or "—"),
         ("Mês de corte da extração", resultado["periodo"]["ultimo"] or "—"),
     ]
     r = 4
@@ -1100,9 +1194,10 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     primeira = r
     for est in estabs:
         ref = linha_ref.get(est["cnpj"])
-        por(ws, "B%d" % r, est["cnpj_fmt"], fonte(9, False, TEXTO), None, ctr, "@")
+        por(ws, "B%d" % r, est["cnpj_fmt"], fonte(9, False, TEXTO), None, ctr)
         por(ws, "C%d" % r, est["uf"], fonte(9), None, ctr)
-        por(ws, "D%d" % r, est["mes_ref"], fonte(9), None, ctr)
+        # o mês de referência é o eixo do cálculo: destacado, como no modelo
+        por(ws, "D%d" % r, est["mes_ref"], fonte(9, True, PETROLEO), None, ctr)
         # os insumos apontam para a linha do mês de referência na aba de
         # conferência — uma só fonte de verdade, conferível clicando na célula
         por(ws, "E%d" % r,
@@ -1128,7 +1223,8 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     for j in range(2, 12):
         c = ws.cell(row=r, column=j)
         c.fill = fill(PETROLEO)
-        c.font = fonte(9, True, BRANCO)
+        c.font = fonte(10, True, BRANCO)
+        c.alignment = esq
     por(ws, "B%d" % r, "TOTAL", fonte(10, True, BRANCO), PETROLEO, esq)
     por(ws, "I%d" % r, "%d de %d qualificaram"
         % (resultado["totais"]["n_calculados"], len(estabs)),
@@ -1159,7 +1255,7 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
     ws_exp.row_dimensions[2].height = 22
     por(ws_exp, "B3:G3",
         "Prova documental da existência e do volume das exportações no período. "
-        "As linhas do mês de referência de cada estabelecimento estão destacadas.",
+        "Linhas do último mês de apuração destacadas.",
         fonte(9, False, SECUNDARIO), None, esq)
 
     for j, titulo in enumerate(["CNPJ", "Mês", "CFOP", "Descrição do CFOP",
@@ -1168,10 +1264,10 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         c.font, c.fill, c.alignment = fonte(9, True, BRANCO), fill(PETROLEO), ctr_wrap
     def linha_operacao(est, op, r):
         eh_ref = op["mes"] == est["mes_ref"]
-        destaque = CREME if eh_ref else None
-        por(ws_exp, "B%d" % r, est["cnpj_fmt"], fonte(9, eh_ref), destaque, ctr, "@")
+        destaque = OLIVA if eh_ref else None
+        por(ws_exp, "B%d" % r, est["cnpj_fmt"], fonte(9, eh_ref), destaque, ctr)
         por(ws_exp, "C%d" % r, op["mes"], fonte(9, eh_ref), destaque, ctr)
-        por(ws_exp, "D%d" % r, op["cfop"], fonte(9, eh_ref), destaque, ctr, "@")
+        por(ws_exp, "D%d" % r, op["cfop"], fonte(9, eh_ref), destaque, ctr)
         por(ws_exp, "E%d" % r, op["descricao"], fonte(9, eh_ref), destaque, esq)
         por(ws_exp, "F%d" % r, round(op["valor"], 2),
             fonte(9, eh_ref), destaque, dir_, FMT_BRL)
@@ -1181,7 +1277,7 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         for j in range(2, 8):
             c = ws_exp.cell(row=r, column=j)
             c.fill, c.font = fill(PETROLEO), fonte(9, True, BRANCO)
-        por(ws_exp, "B%d:C%d" % (r, r), rotulo, fonte(10, True, BRANCO), PETROLEO, esq)
+        por(ws_exp, "B%d" % r, rotulo, fonte(10, True, BRANCO), PETROLEO, esq)
         por(ws_exp, "F%d" % r, formula, fonte(10, True, BRANCO), PETROLEO, dir_, FMT_BRL)
 
     r = 6
@@ -1198,14 +1294,16 @@ def gerar_excel_auditavel(resultado: dict, saida_path: str) -> str:
         for op in saidas:
             linha_operacao(est, op, r)
             r += 1
-    faixa_total(r, "TOTAL EXPORTADO NO PERÍODO",
+    devolucoes = [(est, o) for est in estabs for o in est["exportacoes"] if o["valor"] < 0]
+    # "TOTAL" puro quando não há bloco de devolução abaixo — é o rótulo do modelo; com
+    # o bloco, o total precisa dizer a que se refere
+    faixa_total(r, "TOTAL EXPORTADO NO PERÍODO" if devolucoes else "TOTAL",
                 "=SUM(F%d:F%d)" % (primeira_exp, r - 1))
     r += 2
 
     # Devolução/retorno de exportação em bloco PRÓPRIO, fora do total exportado:
     # é ajuste do mês em que ocorreu, não operação de exportação. Somá-la ao total
     # faria a aba divergir da série mensal quando o piso em zero é acionado.
-    devolucoes = [(est, o) for est in estabs for o in est["exportacoes"] if o["valor"] < 0]
     if devolucoes:
         por(ws_exp, "B%d:G%d" % (r, r),
             "DEVOLUÇÕES / RETORNOS DE EXPORTAÇÃO ABATIDOS DO MÊS DE OCORRÊNCIA",

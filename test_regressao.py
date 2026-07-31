@@ -208,6 +208,15 @@ def testar_caso_real(pasta):
            "9. Seção 1 × Seção 19 fecha nos 7 arquivos (R$ 0,00)",
            "; ".join(res["avisos"]))
 
+    # janela de 60 meses sobre a série de 65 do caso real
+    checar(res["periodo"]["coberto"] == "JUN/2021 a MAI/2026 (60 meses)",
+           "Janela recorta os 65 meses do arquivo para os 60 não prescritos",
+           res["periodo"]["coberto"])
+    meses_export = {o["mes"] for e in res["estabelecimentos"] for o in e["exportacoes"]}
+    checar("ABR/2021" not in meses_export,
+           "Exportação de ABR/2021 (prescrita) não aparece nem como prova",
+           str(sorted(meses_export)))
+
     # 10 — validação de CNPJ raiz: os 7 passam juntos; raiz estranha aborta
     checar(len(res["estabelecimentos"]) == 7,
            "10a. Os 7 estabelecimentos da mesma raiz passam juntos")
@@ -277,8 +286,56 @@ def testar_excel(res, nome_arquivo, titulo):
     return caminho
 
 
+# =============================================================================
+# Janela de 60 meses — o prazo não prescrito
+# =============================================================================
+def testar_janela():
+    print("\n=== JANELA DE %d MESES (prescrição) " % logica.MESES_ANALISE + "=" * 38)
+    from datetime import date
+    import gerar_fixture_sintetica as g
+
+    # contagem de CALENDÁRIO, não de colunas presentes
+    janela = logica.meses_da_janela(["JAN/2021", "MAI/2026", "JUN/2021", "DEZ/2025"])
+    checar("JAN/2021" not in janela and "JUN/2021" in janela and "DEZ/2025" in janela,
+           "JAN/2021 fica fora da janela ancorada em MAI/2026; JUN/2021 fica dentro",
+           str(sorted(janela)))
+
+    # estabelecimento inteiro fora da janela sai da análise, mas COM aviso
+    antigo = dict(g.ESTABELECIMENTOS[0])
+    antigo.update(cnpj="12345678000514", uf="PR",
+                  meses=["JUL/2019", "AGO/2019", "SET/2019", "OUT/2019", "NOV/2019",
+                         "DEZ/2019"])
+    pasta = os.path.join(tempfile.gettempdir(), "regressao_cscie_janela")
+    os.makedirs(pasta, exist_ok=True)
+    prescrito = os.path.join(pasta, "ICMSProprio_PRESCRITO.csv")
+    with open(prescrito, "w", encoding="utf-8-sig", newline="") as fh:
+        fh.write(g.montar(antigo))
+
+    arquivos = sorted(glob.glob(os.path.join(FIXTURES, "*.csv"))) + [prescrito]
+    res = logica.processar_saldo_credor(arquivos, CNPJ_FIXTURE, RAZAO_FIXTURE)
+    checar(len(res["estabelecimentos"]) == 4
+           and not por_cnpj(res, "000514"),
+           "Estabelecimento sem escrituração na janela fica fora da análise",
+           str([e["cnpj_fmt"] for e in res["estabelecimentos"]]))
+    checar(any("já está prescrito" in a for a in res["avisos"]),
+           "…e a exclusão vira AVISO, não omissão silenciosa", "; ".join(res["avisos"]))
+    checar(quase(res["totais"]["correcao"], 62000.00),
+           "O total dos demais segue R$ 62.000,00")
+    checar("6 meses" in res["periodo"]["coberto"],
+           "O período exibido reflete só o que entrou na análise",
+           res["periodo"]["coberto"])
+
+    # a janela é contada do mês de corte (relatório reproduzível), e extração velha avisa
+    checar(logica.aviso_extracao_antiga("MAI/2026", hoje=date(2026, 7, 31)) is None,
+           "Extração recente não gera aviso de defasagem")
+    checar(logica.aviso_extracao_antiga("DEZ/2019", hoje=date(2026, 7, 31)) is not None,
+           "Extração antiga gera aviso de defasagem (sem alterar número algum)")
+    shutil.rmtree(pasta, ignore_errors=True)
+
+
 def main():
     res_fix = testar_fixture()
+    testar_janela()
     if res_fix:
         print("\n--- Excel da fixture " + "-" * 55)
         testar_excel(res_fix, "fixture.xlsx", "fixture, com cálculo")

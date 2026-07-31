@@ -72,6 +72,12 @@
       "descricao": "Jobs pesados simultaneos (semaforo). Evita que varios lotes ao mesmo tempo estourem a memoria da instancia."
     }
   ],
+  "janela_de_analise": {
+    "meses": 60,
+    "ancora": "mes de corte da extracao (mes mais recente do lote)",
+    "descricao": "A analise abrange os ultimos 60 meses, prazo nao prescrito para recuperacao de credito. Mes fora da janela e OMITIDO de todo o relatorio (serie de conferencia, aba de exportacoes, periodo informado e totais), conforme o padrao de produto do HUB para dado fora da analise. A contagem e de calendario, nao de colunas presentes. Estabelecimento sem escrituracao na janela sai da analise com aviso na tela; se nenhum sobrar, e erro de negocio.",
+    "observacao_ancora": "A janela e contada do mes de corte e NAO da data de hoje, para que o mesmo arquivo produza o mesmo relatorio no futuro (documento auditavel). Como efeito colateral, extracao antiga passaria como se nada estivesse prescrito: a ferramenta emite AVISO quando o mes de corte tem mais de 12 meses, sem alterar nenhum numero."
+  },
   "entrada": {
     "tipos_aceitos": [".csv", ".txt", ".zip"],
     "upload_multiplo": true,

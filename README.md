@@ -9,10 +9,36 @@ não há oportunidade, **explica o motivo em prosa** — e isso é resultado, n�
 
 ---
 
+## Janela de 60 meses
+
+A análise abrange os **últimos 60 meses** contados do **mês de corte da extração** (o mês
+mais recente do lote) — o prazo dentro do qual a recuperação de crédito não está
+prescrita. Mês fora da janela **não aparece em lugar nenhum**: nem na série de
+conferência, nem na aba de exportações, nem no período informado no topo do relatório.
+Não é "marcar em amarelo", é omitir — dado prescrito exibido ao lado do apurável convida a
+somar os dois.
+
+A contagem é de **calendário**, não de colunas presentes: se a série tiver buraco, pegar
+"as últimas 60 colunas" alcançaria mês já prescrito.
+
+Consequências que valem conhecer:
+
+- Estabelecimento **sem nenhuma escrituração** na janela sai da análise — mas com **aviso
+  na tela**, nunca em silêncio. Se nenhum sobrar, é erro de negócio com mensagem humana.
+- A âncora é o mês de corte, **não a data de hoje**, para o mesmo arquivo produzir o mesmo
+  relatório daqui a um ano — exigência de documento auditável. O efeito colateral é que
+  uma extração antiga passaria como se nada estivesse prescrito, então a ferramenta
+  **avisa** quando o mês de corte tem mais de 12 meses. O aviso não altera número algum.
+- No caso real de referência, os arquivos trazem 65 meses (JAN/2021 a MAI/2026) e a
+  análise usa 60 (JUN/2021 a MAI/2026). A remessa de exportação de ABR/2021 (R$ 3.241,00,
+  CFOP 5501) fica fora, e o total exportado na janela é R$ 1.266.558,77 em vez dos
+  R$ 1.269.799,77 dos 65 meses.
+
 ## O que ela faz, em três desfechos
 
-O cálculo é feito exclusivamente sobre o último mês de apuração de cada estabelecimento.
-Não existe mês alternativo, retrocesso na série, média do período nem soma de meses.
+O cálculo é feito exclusivamente sobre o último mês de apuração de cada estabelecimento,
+**dentro da janela de 60 meses**. Não existe mês alternativo, retrocesso na série, média do
+período nem soma de meses.
 
 Nesse mês, duas condições são avaliadas em cascata **curto-circuitada**:
 
@@ -188,7 +214,7 @@ quando quiser; deixado vazio, quem decide são os arquivos.
 
 ## Ressalvas metodológicas
 
-As cinco notas abaixo vão no rodapé da aba `Cálculo` do Excel (as duas condicionais
+As notas abaixo vão no rodapé da aba `Cálculo` do Excel (as duas condicionais
 entram só quando se aplicam). A redação canônica está em `logica.py`, para ser revisada
 num só lugar.
 
@@ -196,7 +222,12 @@ num só lugar.
    de apuração de cada estabelecimento, sem retrocesso na série histórica. O mês
    utilizado consta na coluna "Último mês de apuração".
 
-2. **Natureza do saldo utilizado.** O valor utilizado é o saldo credor a transportar
+2. **Período analisado.** A análise abrange os últimos 60 meses contados do mês de corte
+   da extração, prazo dentro do qual a recuperação de crédito não está prescrita. Meses
+   anteriores foram omitidos de todo o relatório — inclusive da série de conferência e das
+   operações de exportação —, e não integram nenhum total apresentado.
+
+3. **Natureza do saldo utilizado.** O valor utilizado é o saldo credor a transportar
    apurado no registro E110 (`VL_SLD_CREDOR_TRANSPORTAR`), que corresponde ao saldo da
    apuração ordinária. **Não equivale, por si, a crédito acumulado formalmente gerado e
    apropriado** nos termos do art. 25, §1º, I, da LC 87/96 — cuja constituição depende do
@@ -206,23 +237,23 @@ num só lugar.
    *Quem mantiver esta ferramenta precisa saber disso: é a distinção que separa o número
    entregue de uma promessa que a EFCT não pode fazer.*
 
-3. **Composição do faturamento total.** Considera exclusivamente CFOPs de venda somados
+4. **Composição do faturamento total.** Considera exclusivamente CFOPs de venda somados
    aos de exportação. Transferências entre estabelecimentos da própria empresa
    (5151/5152/5153/6151/6152/6153), remessas, bonificações e devoluções **não** integram o
    denominador — transferência não é faturamento, e incluí-la derrubaria o percentual sem
    justificativa técnica. É a pergunta nº 1 que o cliente faz.
 
-4. **Exportação indireta** *(condicional)*. As operações classificadas nos CFOPs
+5. **Exportação indireta** *(condicional)*. As operações classificadas nos CFOPs
    5501/5502/6501/6502 são remessas com fim específico de exportação e foram computadas
    pelo valor de face. O direito ao crédito depende da efetiva exportação no prazo legal
    pelo destinatário, o que não é verificável a partir da apuração de ICMS.
 
-5. **Devolução de exportação** *(condicional)*. Operações de devolução/retorno de
+6. **Devolução de exportação** *(condicional)*. Operações de devolução/retorno de
    exportação identificadas nas entradas são abatidas do faturamento de exportação do mês
    em que ocorreram. Quando o valor devolvido supera a exportação do próprio mês, o
    resultado é limitado a zero — nunca a um valor negativo.
 
-6. **Origem dos dados.** Seções 19 e 22 do relatório de apuração de ICMS (`ICMSProprio`),
+7. **Origem dos dados.** Seções 19 e 22 do relatório de apuração de ICMS (`ICMSProprio`),
    correspondentes aos registros C190 e E110 da EFD ICMS/IPI, com o período coberto e o
    mês de corte da extração declarados na própria nota — para que uma execução futura com
    SPED mais recente possa ser comparada com esta.
@@ -290,7 +321,7 @@ python test_regressao.py                        # só a fixture sintética
 python test_regressao.py "C:\pasta\do\sped"     # + o caso real de referência
 ```
 
-São 42 verificações, que cobrem os doze testes de aceitação do briefing. A fixture
+São 51 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
 sintética é versionada (não tem dado de cliente); os relatórios reais **não** ficam no
 repositório — quem os tem passa a pasta como argumento, e sem o argumento o script
 anuncia que os testes do caso real não foram executados, em vez de omiti-los em silêncio.
@@ -317,8 +348,10 @@ calculada** — e é justamente isso que valida a regra:
 | …0706 | RS | MAI/2026 | 0,00 | 0,00 | 56.935,58 | Sem exportação |
 | …0889 | RS | MAI/2026 | 34.233,00 | 0,00 | 1.072.174,23 | Sem exportação |
 
-A empresa exportou R$ 1.269.799,77 ao longo dos 65 meses (CFOPs 7101, 6501 e 5501),
-distribuídos em 10 meses, todos no `…0102` — nenhum deles o último de apuração. A aba
+A empresa exportou R$ 1.269.799,77 ao longo dos 65 meses dos arquivos (CFOPs 7101,
+6501 e 5501), distribuídos em 10 meses, todos no `…0102` — nenhum deles o último de
+apuração. Dentro da janela de 60 meses são 9 meses e R$ 1.266.558,77 (a remessa de
+ABR/2021 está prescrita). A aba
 `Exportações` mostra essas operações: elas provam que a empresa exporta, ainda que não no
 mês de referência.
 
