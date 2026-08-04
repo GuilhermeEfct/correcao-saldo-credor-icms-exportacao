@@ -2,6 +2,11 @@
 
 Sub-página do **HUB EFCT**, grupo **ICMS**. Slug `correcao-saldo-credor-icms-exportacao`.
 
+No HUB o **card** se chama **Saldo Credor de ICMS — Exportações** (decisão do admin: o nome completo tem 58 caracteres e não cabe bem no card, onde os do HUB
+ficam entre 19 e 44). O nome inteiro continua no header da tela e no título da
+planilha, que é onde ele importa. O **slug não mudou** — `tool_id`, rotas,
+`screen_root_id` e `js_init` seguem os mesmos.
+
 Sobre o **último mês de apuração** de cada estabelecimento, calcula o percentual do
 faturamento de exportação em relação ao faturamento total e aplica esse percentual ao
 **saldo credor de ICMS acumulado** (registro E110, `VL_SLD_CREDOR_TRANSPORTAR`). Quando
