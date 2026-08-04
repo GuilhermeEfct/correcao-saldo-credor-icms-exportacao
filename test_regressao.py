@@ -427,11 +427,52 @@ def testar_mensagens_de_erro():
     shutil.rmtree(pasta, ignore_errors=True)
 
 
+# =============================================================================
+# Grupo 7 não é sinônimo de exportação
+# =============================================================================
+def testar_cfop_exportacao():
+    print("\n=== CFOP DE EXPORTAÇÃO (grupo 7 não basta) " + "=" * 33)
+    checar(logica.eh_export_direta("7101") and logica.eh_export_direta("7501"),
+           "7101 e 7501 contam como exportação")
+    for cfop, oque in (("7202", "devolução de compra"), ("7949", "saída não especificada"),
+                       ("7206", "anulação de valor"), ("7930", "lançamento")):
+        checar(not logica.eh_export_direta(cfop)
+               and logica.eh_saida_exterior_nao_qualificada(cfop),
+               "%s (%s) NÃO conta como exportação" % (cfop, oque))
+
+    # o caso real: unicas saidas do mes eram 7202 e 7949 -> a regra "todo o grupo 7"
+    # dava 100% de exportacao e devolvia o saldo credor INTEIRO
+    pasta = os.path.join(tempfile.gettempdir(), "regressao_cscie_cfop")
+    os.makedirs(pasta, exist_ok=True)
+    caminho = os.path.join(pasta, "ICMSProprio_exterior_nao_qualificado.csv")
+    with open(caminho, "w", encoding="utf-8-sig", newline="") as fh:
+        fh.write("ICMSProprio - 1. Resumo ICMS - x\r\n"
+                 "DESCRIÇÃO;NOV/2025;DEZ/2025\r\n"
+                 "Valor Operacional - Saídas/Prestações;0,00;600.000,00\r\n\r\n"
+                 "ICMSProprio - 19. Valor Operacional por CFOP - Saídas/Prestações - \r\n"
+                 "DESCRIÇÃO;NOV/2025;DEZ/2025\r\n"
+                 "7202 - Devol compra p/comercial;0,00;323.396,16\r\n"
+                 "7949 - Outra saída não especificada;0,00;276.603,84\r\n\r\n"
+                 "ICMSProprio - 22. Abertura Saldo a Transportar por CNPJ - \r\n"
+                 "DESCRIÇÃO;NOV/2025;DEZ/2025\r\n"
+                 "12345678000190 - RS;50.000,00;56.383,79\r\n")
+    res = logica.processar_saldo_credor([caminho], CNPJ_FIXTURE, RAZAO_FIXTURE)
+    e = res["estabelecimentos"][0]
+    checar(e["status"] == logica.STATUS_SEM_EXPORTACAO and e["correcao"] is None,
+           "só 7202 e 7949 no mês NÃO viram 100% de exportação",
+           "%s / %s" % (e["status"], e["correcao"]))
+    checar("7202" in e["explicacao"] and "7949" in e["explicacao"]
+           and "não geram o crédito" in e["explicacao"],
+           "…e a explicação NOMEIA os CFOPs e diz por que não contam", e["explicacao"][-120:])
+    shutil.rmtree(pasta, ignore_errors=True)
+
+
 def main():
     res_fix = testar_fixture()
     testar_janela()
     testar_gate_permissao()
     testar_mensagens_de_erro()
+    testar_cfop_exportacao()
     if res_fix:
         print("\n--- Excel da fixture " + "-" * 55)
         testar_excel(res_fix, "fixture.xlsx", "fixture, com cálculo")

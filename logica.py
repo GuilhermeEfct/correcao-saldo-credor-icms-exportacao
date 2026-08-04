@@ -51,9 +51,33 @@ class ErroDeNegocio(Exception):
 # CFOPs — constantes de classificação
 # =============================================================================
 
-# EXPORTAÇÃO DIRETA — saída para o exterior. Todo CFOP do grupo 7.
+# EXPORTAÇÃO DIRETA — venda ao exterior. NÃO é "todo o grupo 7".
+#
+# O grupo 7 é "saída para o exterior", que é mais amplo que exportação: inclui
+# devolução de compra (7201/7202), anulação de valor (7205-7207), lançamentos e saída
+# não especificada (79xx). Nada disso é faturamento de exportação, e nada disso gera o
+# crédito — mas tudo isso entrava no numerador quando a regra era `startswith("7")`.
+# Num caso real, um estabelecimento cujas únicas saídas do mês eram 7202 (devolução de
+# compra) e 7949 (saída não especificada) resultava em 100% de exportação, devolvendo o
+# saldo credor INTEIRO como oportunidade. O erro era para cima, que é a pior direção num
+# documento que pode virar anexo processual. Por isso a lista é explícita, igual à de
+# venda: 7101/7102 (venda de produção e de mercadoria de terceiro), 7105/7106 (venda com
+# industrialização por conta e ordem), 7127 (venda a ordem) e 7501 (exportação de
+# mercadoria recebida com fim específico de exportação).
+CFOP_EXPORT_DIRETA = {"7101", "7102", "7105", "7106", "7127", "7501"}
+
+
 def eh_export_direta(cfop: str) -> bool:
-    return cfop.startswith("7")
+    return cfop in CFOP_EXPORT_DIRETA
+
+
+def eh_saida_exterior_nao_qualificada(cfop: str) -> bool:
+    """Saída para o exterior que NÃO é exportação para efeito do crédito.
+
+    Serve para EXPLICAR: o analista que vê CFOP 7xxx no relatório e lê "não houve
+    exportação" precisa saber por quê, senão vai conferir à mão.
+    """
+    return cfop.startswith("7") and cfop not in CFOP_EXPORT_DIRETA
 
 
 # EXPORTAÇÃO INDIRETA — remessa com fim específico de exportação.
@@ -121,7 +145,16 @@ TPL_SEM_EXPORTACAO = (
     "Identifiquei saldo credor de ICMS acumulado de {saldo} no último mês de apuração "
     "({mes_ref}), porém não houve operação de exportação nesse mês. Como a correção é "
     "proporcional ao faturamento de exportação do próprio mês de referência, não há "
-    "oportunidade a ser calculada."
+    "oportunidade a ser calculada.{contexto}"
+)
+
+# Sem esta frase o analista lê "não houve exportação", abre o relatório, vê CFOP do
+# grupo 7 no mês e vai conferir à mão para entender a contradição. O motivo tem de vir
+# junto com o desfecho.
+TPL_CONTEXTO_EXTERIOR_NAO_QUALIFICA = (
+    " Houve saída para o exterior nesse mês, nos CFOPs {cfops}, mas nenhum deles é venda "
+    "nem remessa com fim específico de exportação — devolução de compra, anulação de valor "
+    "e saída não especificada não geram o crédito, e por isso não entram na proporção."
 )
 
 # Ancorada no MÊS, não no estado da empresa: "não possui mais saldo credor"
@@ -178,6 +211,13 @@ RESSALVA_FATURAMENTO = (
     "Considera exclusivamente CFOPs de venda somados aos de exportação. Transferências "
     "entre estabelecimentos da própria empresa (5151/5152/5153/6151/6152/6153), remessas, "
     "bonificações e devoluções não integram o denominador."
+)
+RESSALVA_EXPORT_DIRETA = (
+    "Como exportação direta foram computados apenas os CFOPs de venda ao exterior "
+    "(7101, 7102, 7105, 7106, 7127 e 7501). Nem todo CFOP do grupo 7 é exportação para "
+    "efeito do crédito: devolução de compra (7201/7202), anulação de valor (7205-7207) e "
+    "saída não especificada (79xx) são saídas ao exterior que não constituem faturamento "
+    "de exportação e ficam fora da proporção."
 )
 RESSALVA_EXPORT_INDIRETA = (
     "As operações classificadas nos CFOPs 5501/5502/6501/6502 são remessas com fim "
@@ -719,8 +759,15 @@ def avaliar_estabelecimento(ap: dict) -> dict:
     elif exportacao <= 0:
         status = STATUS_SEM_EXPORTACAO
         percentual = correcao = None
+        # saída ao exterior que não qualifica precisa ser NOMEADA: é o que explica a
+        # aparente contradição entre "não houve exportação" e o CFOP 7xxx no relatório
+        nao_qualificam = sorted(
+            c for c, v in ap["cfops_saida"].items()
+            if eh_saida_exterior_nao_qualificada(c) and v.get(mes_ref, 0.0))
+        contexto = (TPL_CONTEXTO_EXTERIOR_NAO_QUALIFICA.format(
+            cfops=", ".join(nao_qualificam)) if nao_qualificam else "")
         explicacao = TPL_SEM_EXPORTACAO.format(mes_ref=fmt_mes(mes_ref),
-                                               saldo=fmt_brl(saldo))
+                                               saldo=fmt_brl(saldo), contexto=contexto)
     else:
         status = STATUS_CALCULADO
         # sem arredondar a proporção: o número da tela tem de ser o mesmo que a
@@ -1050,6 +1097,7 @@ def montar_ressalvas(resultado: dict) -> list[tuple[str, str]]:
     """
     notas = [
         ("Critério do mês de referência", RESSALVA_MES),
+        ("Composição da exportação", RESSALVA_EXPORT_DIRETA),
         ("Período analisado", RESSALVA_JANELA.format(
             limite=MESES_ANALISE, corte=resultado["periodo"]["ultimo"] or "não identificado")),
         ("Natureza do saldo utilizado", RESSALVA_NATUREZA_SALDO),

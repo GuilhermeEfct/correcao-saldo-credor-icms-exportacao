@@ -185,6 +185,18 @@ processamento, são segunda e terceira linha — não a única linha.
 - **Arquivo duplicado é descartado, não somado.** Se o mesmo CNPJ vem em dois arquivos, o
   primeiro vale e o segundo é descartado com aviso na tela. Somar dobraria faturamento e
   saldo; fundir séries parciais seria adivinhação.
+- **Grupo 7 não é sinônimo de exportação.** A regra original tratava todo CFOP `7xxx`
+  como exportação direta — mas o grupo é "saída para o exterior", que é mais amplo:
+  inclui devolução de compra (`7201`/`7202`), anulação de valor (`7205`-`7207`) e saída
+  não especificada (`79xx`). Nada disso é faturamento de exportação nem gera o crédito.
+  Num relatório real, um estabelecimento cujas únicas saídas do mês eram `7202` e `7949`
+  produzia **100% de exportação** e devolvia o **saldo credor inteiro** como oportunidade
+  — erro para cima, a pior direção. Por isso a lista é explícita
+  (`7101`, `7102`, `7105`, `7106`, `7127`, `7501`), como a de venda já era.
+- **Quando a saída ao exterior não qualifica, a explicação diz isso.** Sem essa frase o
+  analista lê "não houve exportação", abre o relatório, vê CFOP do grupo 7 no mês e vai
+  conferir à mão para entender a contradição. A explicação nomeia os CFOPs encontrados e
+  o motivo de não entrarem na proporção.
 - **Devolução de exportação tem piso em zero.** CFOPs `1503-1506`, `2503-2506`, `3201`,
   `3202` e `3211` das entradas são abatidos da exportação do mês em que ocorreram. Sem o
   piso, um retorno maior que a exportação do mês produziria exportação negativa e
@@ -362,7 +374,7 @@ python test_regressao.py                        # só a fixture sintética
 python test_regressao.py "C:\pasta\do\sped"     # + o caso real de referência
 ```
 
-São 65 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
+São 72 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
 sintética é versionada (não tem dado de cliente); os relatórios reais **não** ficam no
 repositório — quem os tem passa a pasta como argumento, e sem o argumento o script
 anuncia que os testes do caso real não foram executados, em vez de omiti-los em silêncio.
