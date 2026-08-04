@@ -379,10 +379,59 @@ def testar_gate_permissao():
            routes.PERMISSAO)
 
 
+# =============================================================================
+# Mensagens de erro que se explicam
+#
+# O princípio da ferramenta é o analista SABER o que está ocorrendo. Um erro que só
+# diz "confira se é o relatório certo" joga a suspeita no arquivo dele e o manda
+# conferir à mão — que é o trabalho que a ferramenta deveria eliminar.
+# =============================================================================
+def testar_mensagens_de_erro():
+    print("\n=== MENSAGENS DE ERRO SE EXPLICAM " + "=" * 42)
+    pasta = os.path.join(tempfile.gettempdir(), "regressao_cscie_msg")
+    os.makedirs(pasta, exist_ok=True)
+
+    def erro_de(nome, conteudo):
+        caminho = os.path.join(pasta, nome)
+        with open(caminho, "w", encoding="utf-8-sig", newline="") as fh:
+            fh.write(conteudo)
+        try:
+            logica.processar_saldo_credor([caminho], CNPJ_FIXTURE, RAZAO_FIXTURE)
+            return ""
+        except logica.ErroDeNegocio as e:
+            return str(e)
+
+    # variação de formato: diz o que achou, o que esperava, e NÃO culpa o arquivo
+    msg = erro_de("ICMSProprio_mes_numerico.csv",
+                  "ICMSProprio - 1. Resumo ICMS - x\r\n"
+                  "DESCRIÇÃO;01/2021;02/2021\r\n"
+                  "Valor Operacional - Saídas/Prestações;100,00;200,00\r\n")
+    checar("01/2021" in msg and "JAN/2021" in msg and "jan/21" in msg
+           and "não problema no seu arquivo" in msg,
+           "formato de mês desconhecido: mostra as colunas achadas e os formatos aceitos",
+           msg[:90])
+    checar("seções 1" in msg,
+           "…e diz quais seções do relatório foram reconhecidas", msg[:90])
+
+    # truncado: seções existem, cabeçalho não
+    msg = erro_de("ICMSProprio_truncado.csv",
+                  "ICMSProprio - 1. Resumo ICMS - x\r\nICMSProprio - 19. Saídas - x\r\n"
+                  "5101 - Venda;100,00\r\n")
+    checar("truncado" in msg, "arquivo sem cabeçalho: aponta truncamento", msg[:90])
+
+    # não é apuração, mas o nome engana
+    msg = erro_de("ICMSProprio_outra_coisa.csv", "Data;Documento;Valor\r\n01/01/2026;1;2\r\n")
+    checar("não é o relatório de Apuração de ICMS" in msg,
+           "arquivo que não é apuração: diz que não achou seção alguma", msg[:90])
+
+    shutil.rmtree(pasta, ignore_errors=True)
+
+
 def main():
     res_fix = testar_fixture()
     testar_janela()
     testar_gate_permissao()
+    testar_mensagens_de_erro()
     if res_fix:
         print("\n--- Excel da fixture " + "-" * 55)
         testar_excel(res_fix, "fixture.xlsx", "fixture, com cálculo")

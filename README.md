@@ -85,6 +85,22 @@ reconhecida, CNPJ raiz divergente, nenhum mês identificado. Um analista que rec
 o cliente realmente não se aplica — e volta a conferir à mão, que é justamente o
 trabalho que a ferramenta deveria eliminar.
 
+**E o mesmo vale para o caminho de erro: ele tem de se explicar.** A primeira versão da
+mensagem de "não identifiquei os períodos" dizia apenas *"confira se é o relatório de
+Apuração de ICMS"* — jogava a suspeita no arquivo do analista. E errou: o arquivo estava
+correto, e era a ferramenta que não sabia ler rótulo de mês com ano de 2 dígitos. Quem
+recebeu aquela mensagem ficou sem saber se a ferramenta funciona.
+
+Agora cada erro de leitura diz **o que encontrou** e **o que esperava**, e distingue três
+situações:
+
+| Situação | O que a mensagem informa |
+|---|---|
+| Formato de mês desconhecido | as seções reconhecidas, as primeiras colunas do cabeçalho, os formatos aceitos, e que **isto parece variação de formato, não problema no arquivo** — com o pedido de encaminhar ao admin |
+| Arquivo sem o cabeçalho de meses | as seções reconhecidas e a suspeita de truncamento |
+| Arquivo que não é apuração | que não achou nenhuma seção `ICMSProprio - N.` |
+| Nenhum arquivo reconhecido no lote | **os nomes** dos arquivos recusados e o que a ferramenta procura |
+
 ---
 
 ## Entrada
@@ -346,7 +362,7 @@ python test_regressao.py                        # só a fixture sintética
 python test_regressao.py "C:\pasta\do\sped"     # + o caso real de referência
 ```
 
-São 61 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
+São 65 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
 sintética é versionada (não tem dado de cliente); os relatórios reais **não** ficam no
 repositório — quem os tem passa a pasta como argumento, e sem o argumento o script
 anuncia que os testes do caso real não foram executados, em vez de omiti-los em silêncio.

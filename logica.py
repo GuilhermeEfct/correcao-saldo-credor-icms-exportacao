@@ -490,6 +490,11 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
     # alinhamento dos valores é por POSIÇÃO, então a lista posicional não pode ser
     # filtrada — quem é filtrada é `meses`, usada para percorrer a série.
     colunas: list[str] = []
+    # diagnóstico para a mensagem de erro: sem isto, "não identifiquei os períodos"
+    # obriga o analista a adivinhar se o arquivo está errado ou se a ferramenta é que
+    # não sabe ler aquele formato — e ele volta a conferir à mão
+    secoes_vistas: list[str] = []
+    cabecalho_amostra = ""
 
     def _valores(vals, destino_por_mes):
         for i, bruto in enumerate(vals[:len(colunas)]):
@@ -508,6 +513,8 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
         m = _RE_SECAO.match(ln.lstrip("﻿"))
         if m:
             secao = m.group(1)
+            if secao not in secoes_vistas:
+                secoes_vistas.append(secao)
             continue
         if secao is None or not ln.strip():
             continue
@@ -519,6 +526,9 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
         # cabeçalho de meses: idêntico em todas as seções do arquivo
         if rotulo.upper().startswith("DESCRI"):
             if not colunas:
+                if not cabecalho_amostra:
+                    cabecalho_amostra = "; ".join(
+                        _clean(c) for c in valores[:4] if _clean(c))
                 candidatas = [normalizar_mes(_clean(c)) for c in valores]
                 if any(candidatas):
                     colunas = candidatas
@@ -565,11 +575,28 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
         cnpj = m.group(1) if m else ""
 
     if not meses:
+        # A mensagem diz o que foi ENCONTRADO e o que era esperado. A versão anterior
+        # ("confira se é o relatório de Apuração de ICMS") jogava a suspeita no arquivo
+        # do analista — e errou: o arquivo estava certo, e era a ferramenta que não sabia
+        # ler rótulo de mês com ano de 2 dígitos.
+        nome = os.path.basename(nome_arquivo) or "enviado"
+        if not secoes_vistas:
+            achei = ("Não encontrei nenhuma seção do relatório (as linhas que começam "
+                     "com \"ICMSProprio - N.\"), então provavelmente este arquivo não é "
+                     "o relatório de Apuração de ICMS.")
+        elif not cabecalho_amostra:
+            achei = ("Reconheci o relatório (seções %s), mas ele não tem a linha de "
+                     "cabeçalho \"DESCRIÇÃO\" com os meses — o arquivo pode estar "
+                     "truncado." % ", ".join(secoes_vistas[:8]))
+        else:
+            achei = ("Reconheci o relatório (seções %s) e achei o cabeçalho, mas não "
+                     "consegui ler os rótulos de mês. As primeiras colunas dele são: "
+                     "\"%s\". Os formatos que eu leio são JAN/2021 e jan/21. Isto parece "
+                     "variação de formato do relatório, não problema no seu arquivo: "
+                     "encaminhe esta mensagem ao admin."
+                     % (", ".join(secoes_vistas[:8]), cabecalho_amostra))
         raise ErroDeNegocio(
-            "Não foi possível identificar os períodos de apuração no arquivo %s. "
-            "Confira se é o relatório de Apuração de ICMS (ICMSProprio) exportado em CSV."
-            % (os.path.basename(nome_arquivo) or "enviado")
-        )
+            "Não identifiquei os períodos de apuração no arquivo %s. %s" % (nome, achei))
 
     return {
         "arquivo": os.path.basename(nome_arquivo),
@@ -936,10 +963,15 @@ def processar_saldo_credor(arquivos, cnpj: str, razao_social: str,
            "Lendo arquivos… (%d/%d)" % (i, total_partes))
 
     if not apuracoes:
+        # nomeia os arquivos recusados: "nenhum reconhecido" sem dizer QUAIS deixa o
+        # analista sem saber se mandou o arquivo errado ou se a ferramenta falhou
         raise ErroDeNegocio(
-            "Nenhum relatório de Apuração de ICMS (ICMSProprio) foi reconhecido nos "
-            "arquivos enviados. Envie o relatório exportado em CSV, um por "
-            "estabelecimento — pode ser em .zip.")
+            "Nenhum dos %d arquivo(s) enviados foi reconhecido como relatório de Apuração "
+            "de ICMS (ICMSProprio): %s. O que a ferramenta procura é a linha "
+            "\"ICMSProprio - 1. Resumo ICMS\" no começo do arquivo. Se algum deles for o "
+            "relatório certo, encaminhe esta mensagem ao admin."
+            % (len(partes), ", ".join(os.path.basename(n) for n in nao_reconhecidos[:6])
+               or "sem nome"))
 
     # Janela não prescrita: recorta a série ANTES de avaliar, para que mês prescrito
     # não apareça em canto nenhum do resultado.
