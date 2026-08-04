@@ -126,6 +126,14 @@ def testar_fixture():
            "C: frase de contexto com SET/2025 e R$ 45.000,00")
     checar(d["mes_ref"] == "NOV/2025" and "NOV/2025" in d["explicacao"],
            "D: mês de referência por estabelecimento (NOV/2025)", d["mes_ref"])
+    # o mesmo relatório sai com 'JAN/2021' e com 'jan/21'; com ano de 2 dígitos o
+    # parser não achava mês nenhum e recusava o arquivo como se estivesse errado
+    checar(logica.normalizar_mes("jan/21") == "JAN/2021"
+           and logica.normalizar_mes("DEZ/2025") == "DEZ/2025"
+           and logica.chave_mes("dez/25") == (2025, 12)
+           and logica.normalizar_mes("total") == "",
+           "rótulo de mês aceito nos dois formatos ('jan/21' e 'JAN/2021')",
+           logica.normalizar_mes("jan/21"))
     checar(quase(d["correcao"], 12000.00) and quase(d["percentual"], 0.12),
            "D calcula R$ 12.000,00 com 12,00%", logica.fmt_brl(d["correcao"]))
     checar(not [av for av in res["avisos"] if "Seção 19 divergiu" in av],
@@ -333,9 +341,48 @@ def testar_janela():
     shutil.rmtree(pasta, ignore_errors=True)
 
 
+# =============================================================================
+# Gate de permissão — nega por padrão, concede só quando o dict concede
+# =============================================================================
+def testar_gate_permissao():
+    print("\n=== GATE DE PERMISSÃO (nega por padrão) " + "=" * 35)
+    from flask import Flask
+    import routes
+
+    def status_com(ctx, provider=True):
+        app = Flask(__name__)
+        routes.init_app(app)
+        routes.set_auth_provider((lambda _r: (True, ctx)) if provider else None)
+        app.register_blueprint(routes.bp)
+        with app.test_client() as c:
+            return c.get("/tools/%s/limites" % routes.TOOL_ID).status_code
+
+    # A forma anterior (`if isinstance(p, dict) and not p.get(...)`) tinha fail-open:
+    # contexto sem `permissions`, ou com tipo inesperado, pulava o if e deixava entrar.
+    for titulo, ctx in (
+        ("contexto sem a chave permissions", {"login": "x"}),
+        ("permissions = None", {"login": "x", "permissions": None}),
+        ("permissions com tipo inesperado", {"login": "x", "permissions": ["icms"]}),
+        ("permissions sem a chave do grupo", {"login": "x", "permissions": {"outra": True}}),
+        ("permissions com a chave em False", {"login": "x", "permissions": {"icms": False}}),
+    ):
+        checar(status_com(ctx) == 403, "403 quando %s" % titulo, "veio %d" % status_com(ctx))
+
+    checar(status_com({"login": "x", "permissions": {"icms": True}}) == 200,
+           "200 quando a permissão do grupo concede")
+    checar(status_com({"login": "x", "is_admin": True, "permissions": {}}) == 200,
+           "200 para is_admin sem a chave do grupo")
+    checar(status_com({}, provider=False) == 401,
+           "401 sem provider registrado (o módulo não libera por conta própria)")
+    checar(routes.PERMISSAO == "icms",
+           "a chave é a do GRUPO (icms), não uma chave própria da ferramenta",
+           routes.PERMISSAO)
+
+
 def main():
     res_fix = testar_fixture()
     testar_janela()
+    testar_gate_permissao()
     if res_fix:
         print("\n--- Excel da fixture " + "-" * 55)
         testar_excel(res_fix, "fixture.xlsx", "fixture, com cálculo")

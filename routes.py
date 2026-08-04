@@ -40,8 +40,11 @@ from werkzeug.utils import secure_filename
 import logica
 
 TOOL_ID = "correcao-saldo-credor-icms-exportacao"
-# chave em users.json -> permissions. Mesma do HUB_METADATA.json.
-PERMISSAO = "correcao_saldo_credor_icms_exportacao"
+# Chave em users.json -> permissions. É a do GRUPO, não uma chave própria da
+# ferramenta: quem tem acesso ao card do grupo ICMS tem acesso à ferramenta. Mesmo
+# desenho do C170/C175 com `pis_cofins`. Chave própria para card interno já custou
+# dois deploys na Auditoria de Fretes.
+PERMISSAO = "icms"
 
 bp = Blueprint(TOOL_ID, __name__, url_prefix="/tools/%s" % TOOL_ID)
 
@@ -55,6 +58,7 @@ log = logging.getLogger(TOOL_ID)
 # O relatório de apuração é pequeno (dezenas a centenas de KB por
 # estabelecimento); a folga existe para quem manda tudo num .zip.
 MAX_CONTEUDO_MB = int(os.environ.get("CORRECAO_SALDO_MAX_MB", "200"))
+MAX_CONTEUDO = MAX_CONTEUDO_MB * 1024 * 1024
 MAX_LOTE_MB = int(os.environ.get("CORRECAO_SALDO_MAX_LOTE_MB", "1024"))
 MAX_LOTE = MAX_LOTE_MB * 1024 * 1024
 
@@ -100,30 +104,40 @@ def init_app(app):
 
 
 def _contexto_usuario():
-    if _auth_provider is not None:
-        try:
-            ok, ctx = _auth_provider(request)
-            return bool(ok), (ctx or {})
-        except Exception:          # noqa: BLE001 — provider quebrado nega acesso
-            log.exception("auth_provider falhou")
-            return False, {}
-    # fora do HUB só o modo de teste local libera
-    from flask import current_app
-    liberado = bool(current_app and current_app.config.get("TESTING"))
-    return liberado, ({"login": "teste@efct.com.br", "permissions": {PERMISSAO: True}}
-                      if liberado else {})
+    """(ok, contexto) vindo do HUB. Sem provider registrado, NEGA.
+
+    Este módulo não tem caminho próprio de liberação — nem por `TESTING`. A liberação
+    de desenvolvimento mora no `test_app.py`, que declara não ir para produção e
+    registra um provider explícito.
+    """
+    if _auth_provider is None:
+        return False, {}
+    try:
+        ok, ctx = _auth_provider(request)
+        return bool(ok), (ctx or {})
+    except Exception:              # noqa: BLE001 — provider quebrado nega acesso
+        log.exception("auth_provider falhou")
+        return False, {}
 
 
 def requer_permissao(f):
-    """Autenticação -> 401; permissão granular da ferramenta -> 403. Em JSON:
-    página HTML de erro quebraria o `res.json()` da tela."""
+    """Autenticação -> 401; permissão do grupo -> 403. Em JSON: página HTML de erro
+    quebraria o `res.json()` da tela.
+
+    A checagem NEGA por padrão e só concede quando o dict concede. A forma anterior
+    (`if isinstance(p, dict) and not p.get(...)`) tinha fail-open: contexto sem a chave
+    `permissions`, ou com tipo inesperado, pulava o `if` inteiro e deixava entrar
+    qualquer usuário autenticado.
+    """
     @wraps(f)
     def _wrap(*a, **kw):
         ok, ctx = _contexto_usuario()
         if not ok:
             return jsonify({"ok": False, "erro": "Não autenticado."}), 401
         permissoes = ctx.get("permissions")
-        if isinstance(permissoes, dict) and not permissoes.get(PERMISSAO, False):
+        if not isinstance(permissoes, dict):
+            permissoes = {}
+        if not (ctx.get("is_admin") or permissoes.get(PERMISSAO)):
             return jsonify({"ok": False,
                             "erro": "Sem permissão para esta ferramenta."}), 403
         g.correcao_saldo_user = (ctx.get("login") or ctx.get("email")
@@ -204,17 +218,18 @@ def limites():
 @bp.route("/lote", methods=["POST"])
 @requer_permissao
 def lote_abrir():
-    """Abre um protocolo. CNPJ e razão social são OPCIONAIS aqui: o padrão é a
-    ferramenta identificar a empresa nos próprios relatórios (POST /identificar),
-    e o analista só digita quando quiser sobrescrever."""
+    """Abre um protocolo com a empresa DECLARADA pelo analista (CNPJ + razão social).
+
+    Padrão "CNPJ primeiro" (§4.4): o analista declara qual empresa está analisando e a
+    ferramenta confere os arquivos contra essa declaração.
+    """
     _limpar_expirados()
     cnpj = re.sub(r"\D", "", request.form.get("cnpj", "") or "")
     razao_social = (request.form.get("razao_social", "") or "").strip()
-    if cnpj and len(cnpj) != 14:
+    if len(cnpj) != 14:
         return jsonify({"ok": False,
-                        "erro": "O CNPJ informado não tem 14 dígitos. Deixe o campo "
-                                "vazio para a ferramenta identificar a empresa nos "
-                                "relatórios."}), 400
+                        "erro": "Informe e consulte o CNPJ da empresa antes de "
+                                "calcular."}), 400
 
     protocolo = uuid.uuid4().hex[:12]
     os.makedirs(_dir_lote(protocolo), exist_ok=True)
@@ -242,6 +257,14 @@ def lote_arquivo(protocolo):
             return jsonify({"ok": False, "erro": "Este lote já foi iniciado."}), 409
         acumulado, indice = job["bytes"], len(job["arquivos"])
 
+    # Teto por requisição checado AQUI, não via MAX_CONTENT_LENGTH: o HUB não define
+    # esse valor globalmente — e não pode, porque todas as ferramentas dividem o mesmo
+    # app e um teto global cortaria o upload de todas. Sem esta checagem, /limites
+    # anunciava 200 MB que nada aplicava.
+    if (request.content_length or 0) > MAX_CONTEUDO:
+        return jsonify({"ok": False, "erro": MSG_LIMITE % MAX_CONTEUDO_MB,
+                        "limite_mb": MAX_CONTEUDO_MB}), 413
+
     fs = request.files.get("arquivo")
     if fs is None or not fs.filename:
         return jsonify({"ok": False, "erro": "Nenhum arquivo enviado."}), 400
@@ -263,6 +286,12 @@ def lote_arquivo(protocolo):
         return jsonify({"ok": False, "erro": "Falha ao gravar o arquivo: %s" % e}), 500
 
     tamanho = os.path.getsize(destino)
+    # segunda checagem, sobre o tamanho REAL: o header Content-Length pode vir ausente
+    # ou mentiroso, e aí a checagem anterior não teria pegado nada
+    if tamanho > MAX_CONTEUDO:
+        os.remove(destino)
+        return jsonify({"ok": False, "erro": MSG_LIMITE % MAX_CONTEUDO_MB,
+                        "limite_mb": MAX_CONTEUDO_MB}), 413
     if acumulado + tamanho > MAX_LOTE:
         os.remove(destino)
         return jsonify({"ok": False,
@@ -290,8 +319,9 @@ def lote_arquivo(protocolo):
 def lote_identificar(protocolo):
     """De quem são os relatórios já enviados — sem processá-los.
 
-    A tela chama isto entre o upload e o início do cálculo para preencher a
-    identificação da empresa (CNPJ da matriz + razão social) sem digitação.
+    É CONFERÊNCIA, não identificação da empresa: diz quantos estabelecimentos vieram,
+    quais arquivos não são apuração, e barra o lote quando os relatórios são de outra
+    empresa. Quem declara a empresa é o analista, no campo CNPJ da tela.
     """
     with _LOCK:
         job = _job_do_usuario(protocolo)
@@ -351,26 +381,21 @@ def lote_iniciar(protocolo):
             return jsonify({"ok": False,
                             "erro": "Nenhum arquivo recebido neste lote."}), 400
         caminhos = list(job["arquivos"])
-        identificado = job.get("identificado") or {}
-        # precedência: o que a tela confirmou > o que abriu o lote > o identificado
-        # nos arquivos. O último garante que o backend não depende da tela para
-        # produzir uma planilha identificada.
-        cnpj = cnpj_form or job["cnpj"] or identificado.get("cnpj", "")
+        cnpj = cnpj_form or job["cnpj"]
         razao_social = razao_form or job["razao_social"]
+
+        # O CNPJ é DECLARADO pelo analista (padrão "CNPJ primeiro", §4.4) e os arquivos
+        # são conferidos contra essa declaração. Recusar aqui é o que faz a regra valer:
+        # se o backend adotasse a matriz encontrada nos arquivos, qualquer chamada direta
+        # à API produziria planilha com empresa adivinhada — e um lote trocado sairia
+        # coerente consigo mesmo e errado em relação ao caso.
+        if len(cnpj) != 14:
+            return jsonify({"ok": False,
+                            "erro": "Informe e consulte o CNPJ da empresa antes de "
+                                    "calcular."}), 400
+
         job.update(cnpj=cnpj, razao_social=razao_social, status="processando", pct=0,
                    msg="Na fila…", ts=time.time(), iniciado_at=time.time())
-
-    if len(cnpj) != 14:
-        try:
-            info = logica.identificar_estabelecimentos(caminhos)
-        except Exception:                   # noqa: BLE001
-            info = {"matriz": None}
-        matriz = info.get("matriz") or {}
-        cnpj = matriz.get("cnpj", "")
-        with _LOCK:
-            job = _JOBS.get(protocolo)
-            if job:
-                job["cnpj"] = cnpj
 
     threading.Thread(target=_rodar_job,
                      args=(protocolo, caminhos, cnpj, razao_social),

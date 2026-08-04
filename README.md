@@ -120,31 +120,26 @@ o mês dele.
 
 ---
 
-## Identificação da empresa — e uma divergência consciente do team-kit
+## Identificação da empresa — "CNPJ primeiro"
 
-A empresa **não é digitada**: o CNPJ está dentro dos próprios relatórios (as Seções
-21/22/23 trazem `<14 dígitos> - <UF>`), então a ferramenta identifica todos os
-estabelecimentos enviados e promove a **matriz** (ordem `0001`) ao bloco Empresa, no topo.
-Sem matriz no lote, vale o estabelecimento de menor ordem presente — a razão social é a
-mesma, e é melhor identificar pelo que existe do que construir um CNPJ que não veio em
-arquivo nenhum. Com a matriz em mãos, a razão social vem de `GET /api/cnpj/<cnpj>` do HUB.
+A tela começa pela **Empresa** (passo 1), antes de qualquer upload: o analista informa o
+CNPJ com máscara, a razão social é consultada em `GET /api/cnpj/<cnpj>` do HUB, e o botão
+principal só habilita depois da consulta dar certo. É o padrão de produto do §4.4 do
+team-kit, e vale nas duas pontas: **`POST /iniciar` recusa com 400 sem CNPJ de 14
+dígitos**. Sem essa recusa a regra valeria só na tela — uma chamada direta à API
+produziria planilha com empresa adivinhada a partir dos arquivos.
 
-O campo CNPJ continua na tela, **editável**, para o analista sobrescrever a identificação
-quando quiser; deixado vazio, quem decide são os arquivos.
+**Por que declarar é mais forte que adivinhar.** O CNPJ está dentro dos relatórios (Seções
+21/22/23 trazem `<14 dígitos> - <UF>`), e é tentador extraí-lo em vez de pedir. Mas aí quem
+diz qual é a empresa é o próprio arquivo, e um **lote trocado produz uma planilha coerente
+consigo mesma e errada em relação ao caso** — num documento que pode virar anexo
+processual. Com o CNPJ declarado, o analista afirma qual empresa está analisando e a
+ferramenta confere os arquivos contra essa afirmação.
 
-> ⚠ **Divergência do padrão de produto (§4.4 do team-kit), a pedido da área.** A regra diz
-> que a tela começa pelo CNPJ e que *"o botão principal só habilita após o CNPJ ser
-> consultado com sucesso"*. Aqui o botão habilita com os **relatórios** presentes, e o CNPJ
-> aparece preenchido durante a execução, antes de qualquer resultado. Motivo: o dado já
-> está no arquivo, e exigir digitação era retrabalho puro.
->
-> **A proteção que a regra original dava foi preservada.** O risco real era a planilha sair
-> com a razão social de uma empresa e o saldo credor de outra — erro que não quebra nada,
-> só mente, num documento que pode virar anexo processual. Continua coberto em dois
-> pontos: (a) relatórios de **raízes de CNPJ diferentes** no mesmo lote abortam a análise
-> com mensagem explícita, na identificação e de novo no processamento; (b) quando o
-> analista digita um CNPJ, a validação da seção 3.6a confere cada arquivo contra ele, como
-> antes. CNPJ + razão social continuam viajando no FormData e sendo gravados no Excel.
+`POST /lote/{protocolo}/identificar` continua existindo, agora como **conferência**: conta
+os estabelecimentos encontrados, lista os arquivos que não são apuração e **barra o lote
+quando os relatórios são de outra empresa**. Junto com o `validar_cnpj_raiz` do
+processamento, são segunda e terceira linha — não a única linha.
 
 ## Decisões técnicas não-óbvias
 
@@ -179,13 +174,28 @@ quando quiser; deixado vazio, quem decide são os arquivos.
   piso, um retorno maior que a exportação do mês produziria exportação negativa e
   percentual negativo na aba de conferência. Quando o piso é acionado, a aba `Exportações`
   registra em qual mês e estabelecimento.
-- **A identificação da empresa é uma passada leve e separada** (`identificar_estabelecimentos`),
-  que para no primeiro CNPJ de cada arquivo em vez de montar a série inteira. Ela roda
-  entre o upload e o cálculo, sobre os arquivos **já enviados** — o analista não sobe nada
-  duas vezes.
-- **O backend não depende da tela para produzir planilha identificada.** Se `iniciar` chegar
-  sem CNPJ, ele mesmo identifica a matriz nos arquivos. A precedência é: o que a tela
-  confirmou > o que abriu o lote > o identificado nos relatórios.
+- **A conferência dos relatórios é uma passada leve e separada** (`identificar_estabelecimentos`),
+  que para no primeiro CNPJ de cada arquivo em vez de montar a série inteira. Roda entre o
+  upload e o cálculo, sobre os arquivos **já enviados** — o analista não sobe nada duas vezes.
+- **O rótulo do mês vem em dois formatos** e os dois são aceitos: `JAN/2021` e `jan/21`
+  (ano de 2 dígitos vira 20XX). Com só o formato de 4 dígitos, um relatório exportado no
+  outro formato era recusado como se estivesse errado. Colunas de preenchimento (`;;;;`) no
+  fim da linha do cabeçalho são descartadas — o alinhamento dos valores é posicional, então
+  a lista de colunas guarda a posição e a lista de meses guarda só o que é mês.
+- **A permissão é a do GRUPO (`icms`), não uma chave própria da ferramenta.** Quem tem
+  acesso ao card do grupo ICMS tem acesso à ferramenta, como o C170/C175 fazem com
+  `pis_cofins`.
+- **O gate de permissão nega por padrão.** A forma intuitiva
+  (`if isinstance(p, dict) and not p.get(chave)`) tem *fail-open*: contexto sem a chave
+  `permissions`, ou com tipo inesperado, pula o `if` inteiro e deixa entrar qualquer usuário
+  autenticado. A checagem certa monta o dict vazio quando o tipo não serve e exige
+  `is_admin or permissions.get(chave)`. Sem provider registrado, o módulo nega — não existe
+  caminho próprio de liberação, nem por `TESTING`: a liberação de desenvolvimento mora no
+  `test_app.py`, que declara não ir para produção.
+- **O teto por requisição é aplicado na rota**, com checagem dupla (`request.content_length`
+  antes de gravar e o tamanho real depois, para header ausente ou mentiroso). Não via
+  `MAX_CONTENT_LENGTH`: o HUB não define esse valor globalmente, e não pode — todas as
+  ferramentas dividem o mesmo app e um teto global cortaria o upload de todas.
 - **Processamento assíncrono** desde o nascimento: o Render corta requisição em ~240 s, e
   aumentar o `--timeout` do gunicorn não resolve. `POST /lote` → N × `POST /lote/{p}/arquivo`
   → `POST /lote/{p}/identificar` → `POST /lote/{p}/iniciar` (202) → `GET /status/{p}` a cada
@@ -336,7 +346,7 @@ python test_regressao.py                        # só a fixture sintética
 python test_regressao.py "C:\pasta\do\sped"     # + o caso real de referência
 ```
 
-São 51 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
+São 61 verificações, que cobrem os doze testes de aceitação do briefing e a janela de 60 meses. A fixture
 sintética é versionada (não tem dado de cliente); os relatórios reais **não** ficam no
 repositório — quem os tem passa a pasta como argumento, e sem o argumento o script
 anuncia que os testes do caso real não foram executados, em vez de omiti-los em silêncio.

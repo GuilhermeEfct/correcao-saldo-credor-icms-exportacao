@@ -219,7 +219,10 @@ MESES_PTBR = {m: i for i, m in enumerate(
 # porque dado prescrito exibido ao lado do apurável convida a somar os dois.
 MESES_ANALISE = 60
 
-_RE_MES = re.compile(r"^([A-Z]{3})/(\d{4})$")
+# O mesmo relatório sai em dois formatos de rótulo, dependendo de como foi exportado:
+# 'JAN/2021' e 'jan/21'. Aceitar os dois é obrigatório — com ano de 2 dígitos o
+# parser não achava mês nenhum e o arquivo era recusado como se estivesse errado.
+_RE_MES = re.compile(r"^([A-Z]{3})/(\d{2}|\d{4})$")
 _RE_SECAO = re.compile(r"^ICMSProprio\s*-\s*(\d+)\s*[.\-]")
 _RE_CFOP = re.compile(r"^(\d{4})\s*-\s*(.*)$")
 _RE_CNPJ_UF = re.compile(r"^(\d{14})\s*-\s*([A-Za-z]{2})?")
@@ -237,8 +240,21 @@ def fmt_pct(fracao) -> str:
 
 
 def fmt_mes(rotulo: str) -> str:
-    """Mantém o rótulo original do relatório ('MAI/2026'), apenas normalizado."""
-    return (rotulo or "").strip().upper()
+    """Rótulo do mês em forma canônica ('MAI/2026')."""
+    return normalizar_mes(rotulo) or (rotulo or "").strip().upper()
+
+
+def normalizar_mes(rotulo: str) -> str:
+    """'jan/21' e 'JAN/2021' -> 'JAN/2021'. Devolve '' se não for rótulo de mês.
+
+    O ano de 2 dígitos vira 20XX: este relatório é de apuração de ICMS, e não existe
+    escrituração de 19XX no escopo da ferramenta.
+    """
+    m = _RE_MES.match((rotulo or "").strip().upper())
+    if not m or m.group(1) not in MESES_PTBR:
+        return ""
+    ano = m.group(2)
+    return "%s/%s" % (m.group(1), ano if len(ano) == 4 else "20" + ano)
 
 
 def fmt_cnpj(digitos: str) -> str:
@@ -251,15 +267,15 @@ def fmt_cnpj(digitos: str) -> str:
 
 def chave_mes(rotulo: str):
     """Ordenação por (ano, mês). Ordem alfabética destruiria a série."""
-    m = _RE_MES.match(fmt_mes(rotulo))
-    if not m or m.group(1) not in MESES_PTBR:
+    canonico = normalizar_mes(rotulo)
+    if not canonico:
         return (0, 0)
-    return (int(m.group(2)), MESES_PTBR[m.group(1)])
+    sigla, ano = canonico.split("/")
+    return (int(ano), MESES_PTBR[sigla])
 
 
 def eh_rotulo_mes(texto: str) -> bool:
-    m = _RE_MES.match(fmt_mes(texto))
-    return bool(m and m.group(1) in MESES_PTBR)
+    return bool(normalizar_mes(texto))
 
 
 def _indice_calendario(rotulo: str) -> int:
@@ -469,11 +485,19 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
     inicio: list[str] = []
     secao = None
 
+    # `colunas` guarda a posição de cada coluna do cabeçalho, com "" onde a coluna não
+    # é mês (o relatório às vezes traz ';;;;' de preenchimento no fim da linha). O
+    # alinhamento dos valores é por POSIÇÃO, então a lista posicional não pode ser
+    # filtrada — quem é filtrada é `meses`, usada para percorrer a série.
+    colunas: list[str] = []
+
     def _valores(vals, destino_por_mes):
-        for i, bruto in enumerate(vals[:len(meses)]):
+        for i, bruto in enumerate(vals[:len(colunas)]):
+            mes = colunas[i]
+            if not mes:
+                continue
             v = _num(bruto)
             if v is not None:
-                mes = meses[i]
                 destino_por_mes[mes] = destino_por_mes.get(mes, 0.0) + v
 
     for bruta in linhas:
@@ -494,12 +518,13 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
 
         # cabeçalho de meses: idêntico em todas as seções do arquivo
         if rotulo.upper().startswith("DESCRI"):
-            if not meses:
-                cols = [_clean(c) for c in valores]
-                if any(eh_rotulo_mes(c) for c in cols):
-                    meses = cols
+            if not colunas:
+                candidatas = [normalizar_mes(_clean(c)) for c in valores]
+                if any(candidatas):
+                    colunas = candidatas
+                    meses = [m for m in candidatas if m]
             continue
-        if not meses:
+        if not colunas:
             continue
 
         if secao == "19":
@@ -527,8 +552,9 @@ def parse_apuracao_mensal(linhas, nome_arquivo: str = "") -> dict:
                 uf = (mc.group(2) or "").upper()
             if secao == "22":
                 # aqui o None PRECISA sobreviver: célula vazia = mês sem escrituração
-                for i, bruto in enumerate(valores[:len(meses)]):
-                    saldo_credor[meses[i]] = _num(bruto)
+                for i, bruto in enumerate(valores[:len(colunas)]):
+                    if colunas[i]:
+                        saldo_credor[colunas[i]] = _num(bruto)
 
         elif secao == "1" and rotulo.lower().startswith("valor operacional - sa"):
             _valores(valores, oper_saidas_s1)

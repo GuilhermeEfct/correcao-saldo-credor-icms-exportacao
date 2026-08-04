@@ -1,6 +1,7 @@
 {
   "tool_id": "correcao-saldo-credor-icms-exportacao",
   "nome": "Correção do Saldo Credor de ICMS proporcional às Exportações",
+  "nome_card": "Saldo Credor de ICMS — Exportações",
   "descricao_curta": "Sobre o último mês de apuração, calcula o percentual do faturamento de exportação em relação ao faturamento total e aplica ao saldo credor de ICMS acumulado. Quando não há oportunidade, explica o motivo.",
   "area_responsavel": "ICMS/IPI",
   "grupos": ["ICMS"],
@@ -27,9 +28,10 @@
     ]
   },
   "permissao": {
-    "modo": "opt-in",
+    "modo": "herda-do-grupo",
     "padrao": false,
-    "chave": "correcao_saldo_credor_icms_exportacao",
+    "chave": "icms",
+    "observacao_chave": "Chave do GRUPO, nao da ferramenta: quem tem acesso ao card do grupo ICMS tem acesso a ferramenta, como o C170/C175 fazem com pis_cofins. O gate nega por padrao e concede so quando o dict de permissions concede, com is_admin passando.",
     "herda_autenticacao_hub": true
   },
   "processamento": {
@@ -37,7 +39,7 @@
     "endpoint_limites": "/tools/correcao-saldo-credor-icms-exportacao/limites",
     "endpoint_lote_abrir": "/tools/correcao-saldo-credor-icms-exportacao/lote",
     "endpoint_lote_arquivo": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/arquivo",
-    "endpoint_lote_identificar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/identificar",
+    "endpoint_lote_identificar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/identificar (conferencia dos relatorios contra a empresa declarada)",
     "endpoint_lote_iniciar": "/tools/correcao-saldo-credor-icms-exportacao/lote/{protocolo}/iniciar",
     "endpoint_status": "/tools/correcao-saldo-credor-icms-exportacao/status/{protocolo}",
     "endpoint_download": "/tools/correcao-saldo-credor-icms-exportacao/download/{token}",
@@ -47,6 +49,7 @@
     "job_ttl_segundos": 3600,
     "jobs_pesados_simultaneos": 2,
     "limite_por_requisicao_mb": 200,
+    "observacao_limite": "Aplicado NA ROTA, com checagem dupla (request.content_length antes de gravar e o tamanho real depois, para header ausente ou mentiroso). Nao via MAX_CONTENT_LENGTH: o HUB nao define esse valor globalmente, e nao pode — todas as ferramentas dividem o mesmo app e um teto global cortaria o upload de todas.",
     "limite_lote_mb": 1024,
     "observacao_envio": "A tela envia UM arquivo por requisicao (POST /lote, N x POST /lote/{protocolo}/arquivo, POST /lote/{protocolo}/iniciar) e acompanha por GET /status com setTimeout recursivo a cada 3s. Um POST unico nao sobrevive ao corte de ~240s da plataforma. Os uploads vao direto para o disco temporario e a area do lote e apagada ao fim do job.",
     "disco_temporario": "Ate limite_lote_mb por protocolo em tempfile.gettempdir(); apagado no fim do job e no GC por idade (JOB_TTL 1h). Planilha nunca baixada e removida quando o token expira.",
@@ -85,15 +88,15 @@
   },
   "parametros": {
     "cnpj": {
-      "obrigatorio": false,
-      "descricao": "OPCIONAL. Por padrao a ferramenta identifica a empresa nos proprios relatorios (Secoes 21/22/23 trazem '<14 digitos> - <UF>') e promove a matriz (ordem 0001) ao bloco Empresa. O campo existe para o analista sobrescrever a identificacao; quando preenchido, a raiz e conferida contra a dos arquivos e divergencia aborta a analise."
+      "obrigatorio": true,
+      "descricao": "OBRIGATORIO (padrao 'CNPJ primeiro', secao 4.4). O analista declara a empresa no passo 1, antes de qualquer upload; a razao social vem de GET /api/cnpj/<cnpj> do HUB e o botao principal so habilita depois da consulta OK. POST /iniciar recusa com 400 sem CNPJ de 14 digitos — sem isso a regra valeria so na tela. Os arquivos sao conferidos contra a declaracao: raiz divergente aborta a analise."
     },
     "razao_social": {
       "obrigatorio": false,
       "descricao": "Obtida em GET /api/cnpj/<cnpj> do HUB a partir do CNPJ identificado. Vai para o bloco Empresa do Excel. Se a consulta falhar, o calculo segue e a planilha marca a razao social como nao informada."
     }
   },
-  "observacao_padrao_produto": "DIVERGENCIA CONSCIENTE do item 'CNPJ primeiro' (secao 4.4 do team-kit), pedida pela area: o botao principal habilita com os RELATORIOS presentes, nao apos a consulta do CNPJ, porque o CNPJ ja esta dentro do arquivo e exigir digitacao era retrabalho. A protecao original foi preservada: relatorios de raizes de CNPJ diferentes no mesmo lote abortam a analise (na identificacao e de novo no processamento), e CNPJ + razao social continuam viajando no FormData e sendo gravados no Excel. Detalhes no README, secao 'Identificacao da empresa'.",
+  "observacao_padrao_produto": "Segue o item 'CNPJ primeiro' (secao 4.4) integralmente: passo 1 da tela e Empresa (CNPJ com mascara + razao social consultada em GET /api/cnpj/<cnpj>), antes de qualquer upload; o botao principal so habilita apos a consulta OK; e POST /iniciar recusa com 400 sem CNPJ de 14 digitos — sem esse ultimo a regra valeria so na tela, porque chamada direta a API produziria planilha com empresa adivinhada. POST /identificar continua, agora como CONFERENCIA: conta os estabelecimentos, lista os arquivos que nao sao apuracao e barra o lote quando os relatorios sao de outra empresa; junto com validar_cnpj_raiz no processamento, ficam como segunda linha em vez de unica linha.",
   "saida": {
     "formato": "xlsx",
     "auditavel": true,

@@ -55,8 +55,7 @@
 
     var LIMITE_MB = 200;         // teto de UMA requisição (um arquivo)
     var LIMITE_LOTE_MB = 1024;   // teto do lote inteiro
-    var estado = {cnpj: "", razao: "", manual: false, timer: null,
-                  resultado: null, token: null};
+    var estado = {cnpj: "", razao: "", timer: null, resultado: null, token: null};
 
     // ---------------------------------------------------------------- helpers
     function cscieHeaders(extra) {
@@ -176,13 +175,13 @@
 
     var consultaEmCurso = 0;
 
-    // Digitar o CNPJ é OPCIONAL: serve para sobrescrever a empresa que a ferramenta
-    // identifica nos relatórios (ver identificarEmpresa).
+    // Passo 1 do padrão "CNPJ primeiro": o analista DECLARA a empresa aqui, antes de
+    // qualquer upload, e a razão social vem da rota do HUB. Os relatórios enviados são
+    // conferidos contra essa declaração (ver conferirRelatorios).
     function consultarCnpj() {
       var digitos = elCnpj.value.replace(/\D/g, "");
       estado.cnpj = "";
       estado.razao = "";
-      estado.manual = digitos.length > 0;
       if (digitos.length !== 14) {
         mostrarRazao("—", true);
         avisarCnpj(digitos.length ? "O CNPJ precisa de 14 dígitos." : "");
@@ -255,28 +254,25 @@
       atualizarBotao();
     }
 
-    // O cálculo depende dos relatórios, não de digitação: a empresa é identificada
-    // neles. Um CNPJ digitado pela metade é o único caso que trava, porque é
-    // ambíguo — não se sabe se o analista quis sobrescrever ou não.
+    // Padrão "CNPJ primeiro" (§4.4): o botão principal só habilita depois da consulta
+    // do CNPJ ter dado certo E dos relatórios estarem selecionados. O analista declara
+    // qual empresa está analisando; os arquivos são conferidos contra a declaração.
     function atualizarBotao() {
       var temArquivos = elArquivos.files && elArquivos.files.length > 0;
-      var digitos = elCnpj.value.replace(/\D/g, "").length;
-      var parcial = digitos > 0 && digitos < 14;
-      elBtn.disabled = !temArquivos || parcial;
-      if (parcial) {
-        elBtnAviso.textContent = "Complete o CNPJ ou apague o campo para a ferramenta " +
-          "identificar a empresa nos relatórios.";
-      } else if (temArquivos) {
-        elBtnAviso.textContent = "Pronto para calcular.";
+      elBtn.disabled = !estado.cnpj || !temArquivos;
+      if (!estado.cnpj) {
+        elBtnAviso.textContent = "Informe o CNPJ da empresa para habilitar o cálculo.";
+      } else if (!temArquivos) {
+        elBtnAviso.textContent = "Envie os relatórios de apuração para habilitar o cálculo.";
       } else {
-        elBtnAviso.textContent = "Envie os relatórios para habilitar o cálculo.";
+        elBtnAviso.textContent = "Pronto para calcular.";
       }
     }
 
     // ------------------------------------------------------------- calcular
     elBtn.addEventListener("click", function () {
       var fs = elArquivos.files;
-      if (!fs || !fs.length) return;
+      if (!fs || !fs.length || !estado.cnpj) return;
       var total = 0;
       for (var i = 0; i < fs.length; i++) total += fs[i].size;
 
@@ -323,9 +319,9 @@
 
           return proximo(0).then(function () {
             elProgMsg.textContent = "Enviados " + fs.length + " arquivo(s), " +
-              formatarMB(totalBytes / 1048576) + ". Identificando a empresa…";
+              formatarMB(totalBytes / 1048576) + ". Conferindo os relatórios…";
             elBarFill.style.width = "60%";
-            return identificarEmpresa(protocolo);
+            return conferirRelatorios(protocolo);
           }).then(function () {
             elProgMsg.textContent = "Iniciando o processamento…";
             var fd = new FormData();
@@ -342,54 +338,27 @@
         });
     }
 
-    // Descobre de quem são os relatórios e preenche o bloco Empresa. A matriz
-    // (ordem 0001) sobe para o topo como identificação da empresa; os demais
-    // estabelecimentos aparecem na tabela do resultado.
-    function identificarEmpresa(protocolo) {
+    // CONFERÊNCIA dos relatórios contra a empresa declarada no passo 1 — não
+    // identificação da empresa. Diz quantos estabelecimentos vieram, quais arquivos não
+    // são apuração, e barra o lote quando os relatórios são de outra empresa.
+    function conferirRelatorios(protocolo) {
       return cscieFetch(BASE + "/lote/" + protocolo + "/identificar", {method: "POST"})
         .then(cscieLerJson)
         .then(function (d) {
-          if (!d.ok) throw new Error(d.erro || "Não foi possível identificar a empresa.");
+          if (!d.ok) throw new Error(d.erro || "Não foi possível ler os relatórios.");
           // raízes diferentes no mesmo lote: a planilha sairia com a razão social de
           // uma empresa e o saldo de outra
           if (d.erro_raizes) throw new Error(d.erro_raizes);
 
           var n = (d.estabelecimentos || []).length;
-          var matriz = d.matriz || {};
-          var ehMatriz = matriz.cnpj && matriz.cnpj.slice(8, 12) === "0001";
-          var resumo = n + (n === 1 ? " estabelecimento identificado"
-                                    : " estabelecimentos identificados") +
-            " nos relatórios · " + (ehMatriz ? "matriz " : "referência ") +
-            (matriz.cnpj_fmt || "—");
+          var resumo = n + (n === 1 ? " estabelecimento encontrado"
+                                    : " estabelecimentos encontrados") +
+            " nos relatórios enviados";
           if (d.nao_reconhecidos && d.nao_reconhecidos.length) {
             resumo += " · " + d.nao_reconhecidos.length + " arquivo(s) fora da análise: " +
               d.nao_reconhecidos.join(", ");
           }
           avisarCnpj(resumo);
-
-          // analista digitou o CNPJ: a escolha dele manda, e a validação de raiz
-          // no backend continua conferindo os arquivos contra ele
-          if (estado.manual && estado.cnpj) return null;
-          if (!matriz.cnpj) return null;
-
-          elCnpj.value = matriz.cnpj_fmt || "";
-          estado.cnpj = matriz.cnpj;
-          mostrarRazao("consultando…", true);
-          consultaEmCurso += 1;
-          return buscarRazao(matriz.cnpj)
-            .then(function (razao) {
-              estado.razao = razao;
-              mostrarRazao(razao, false);
-            })
-            .catch(function (e) {
-              // sem razão social o cálculo segue: o que ela alimenta é a
-              // identificação do relatório, não a conta
-              estado.razao = "";
-              mostrarRazao("—", true);
-              avisarCnpj(resumo + " · não foi possível consultar a razão social (" +
-                (e && e.message ? e.message : "falha na consulta") +
-                "); o cálculo segue sem ela.");
-            });
         });
     }
 
@@ -723,7 +692,6 @@
       consultaEmCurso += 1;          // invalida consulta de CNPJ em voo
       estado.cnpj = "";
       estado.razao = "";
-      estado.manual = false;
       estado.resultado = null;
       elCnpj.value = "";
       elArquivos.value = "";

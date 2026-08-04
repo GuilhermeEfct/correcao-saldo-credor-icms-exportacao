@@ -11,8 +11,9 @@ Uso:
 A porta sai de PORT quando a variável existe (5000 é só o padrão), para conviver com
 outro servidor local já ocupando a 5000.
 
-Monta a mesma tela (screen.html/css/js) e registra o blueprint de routes.py com
-TESTING=True, que libera a permissão localmente — em produção quem autoriza é o HUB.
+Monta a mesma tela (screen.html/css/js) e registra o blueprint de routes.py junto com um
+**provider de autenticação de desenvolvimento** — em produção quem autoriza é o HUB. O
+routes.py não tem caminho próprio de liberação: sem provider registrado, ele nega.
 
 Inclui um STUB de `GET /api/cnpj/<cnpj>`: essa rota é do HUB, não da ferramenta. O
 stub existe apenas para o fluxo "CNPJ primeiro" poder ser exercitado offline, e
@@ -33,15 +34,23 @@ def _ler(nome):
         return fh.read()
 
 
+def _provider_de_desenvolvimento(_request):
+    """Libera o acesso LOCALMENTE. Este arquivo não vai para produção — o routes.py
+    não tem nenhum caminho próprio de liberação, nem por TESTING."""
+    return True, {"login": "teste@efct.com.br", "nome": "Teste local",
+                  "is_admin": False, "permissions": {routes.PERMISSAO: True}}
+
+
 def criar_app():
     app = Flask(__name__)
-    app.config["TESTING"] = True          # libera requer_permissao no ambiente local
+    app.config["TESTING"] = True
     # Teto local do corpo da requisição. Para testar o caminho de excesso:
     #   TESTE_MAX_MB=1 python test_app.py
     teto_mb = int(os.environ.get("TESTE_MAX_MB", "512"))
     app.config["MAX_CONTENT_LENGTH"] = teto_mb * 1024 * 1024
 
     routes.init_app(app)
+    routes.set_auth_provider(_provider_de_desenvolvimento)
     app.register_blueprint(routes.bp)
 
     @app.route("/api/cnpj/<cnpj>")
