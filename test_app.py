@@ -8,6 +8,9 @@ Uso:
     python test_app.py
     # abre http://127.0.0.1:5000
 
+A porta sai de PORT quando a variável existe (5000 é só o padrão), para conviver com
+outro servidor local já ocupando a 5000.
+
 Monta a mesma tela (screen.html/css/js) e registra o blueprint de routes.py com
 TESTING=True, que libera a permissão localmente — em produção quem autoriza é o HUB.
 
@@ -73,4 +76,4 @@ __HTML__
 
 
 if __name__ == "__main__":
-    criar_app().run(debug=True, port=5000)
+    criar_app().run(debug=True, port=int(os.environ.get("PORT", "5000")))
